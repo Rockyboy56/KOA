@@ -684,6 +684,266 @@ STEP 3: /agents testing-performance-benchmarker
 
 ---
 
+## Sprint 5: Content Depth, Endgame & Potion Accessibility
+
+```
+RECOMMENDED AGENTS:
+  Design:    game-designer (horde events, active skills, elite mode balance)
+  Narrative: narrative-designer (boss intro cards, wave flavour text)
+  Code:      engineering-frontend-developer (implementation)
+  UI:        design-ui-designer (consumables tab, stats screen layout)
+  Review:    engineering-code-reviewer (after completion)
+```
+
+### 5.1 Horde Wave Events
+
+Add surprise burst events at waves 10, 20, 30, 40 (between normal spawns):
+
+```
+- When wave number % 10 === 0: trigger a HORDE EVENT mid-wave
+- Show a full-screen banner: "⚠ HORDE INCOMING!" (red, 1.5s)
+- Immediately spawn 15 raiders from all active sides simultaneously
+- Raiders have 1.5x speed for this burst only (frenzied)
+- Audio cue: rapid drumbeat (procedural, 4 hits in 0.5s)
+- These count toward wave kill total
+- Add hordeEvent flag to waveManager, fire once per eligible wave
+```
+
+### 5.2 Boss Intro Cards
+
+When a titan spawns, show a dramatic intro card before it appears:
+
+```
+- Freeze enemy spawning for 2s
+- Overlay: dark vignette, central card slides in from bottom
+- Card content:
+    Large skull icon (drawn canvas)
+    Boss name: "IRON FIST" / "BLOODTUSK" / "THE SIEGE KING" / "WARCHIEF GRONN" / "THE TITAN LORD"
+    (cycle through names based on which boss wave: 15/25/35/45/50)
+    Flavour text (1 line): see narrative table below
+    HP bar: full red, labelled "TITAN"
+- Card auto-dismisses after 2s, boss spawns
+- Plays boss spawn sound (already exists)
+- Add bossName and bossLore fields to titan config in config.js
+```
+
+Boss lore table (add to config.js ENEMIES.titan):
+```js
+bosses: [
+  { name: 'Iron Fist',      lore: 'The first of many. He will not be the last.' },
+  { name: 'Bloodtusk',      lore: 'They say he has never bled. Today that changes.' },
+  { name: 'The Siege King', lore: 'He has broken a hundred forts. Not this one.' },
+  { name: 'Warchief Gronn', lore: 'The horde bows to him. Your walls do not.' },
+  { name: 'The Titan Lord', lore: 'The final wave. The last stand. Make it count.' },
+]
+```
+
+### 5.3 Active Skills
+
+Replace or supplement passive skills with 2 active usable abilities:
+
+```
+In config.js SKILLS, add two active skill entries:
+  warCry:    { name: 'War Cry',    type: 'active', cost: 800,  cooldown: 45,
+               description: 'Stun all enemies on screen for 2 seconds.',
+               requires: 'barracks' }
+  shieldBash:{ name: 'Shield Bash', type: 'active', cost: 600, cooldown: 30,
+               description: 'Knock all nearby enemies back 150px. Requires shield.',
+               requires: null }
+
+In player.js:
+  - player.activeSkills = [] (array of equipped active skill keys, max 2)
+  - player.skillCooldowns = {} (per-skill cooldown timer)
+  - Keys Q and R trigger activeSkills[0] and activeSkills[1]
+
+In combat.js:
+  - activateWarCry(): set stunTimer=2.0 on all alive enemies, spawn yellow
+    stun-star particles above each, play a horn sound
+  - activateShieldBash(): for each enemy within 200px, apply knockback
+    away from player * 150px, spawn dust burst particles
+
+In hud.js:
+  - Draw 2 small skill icons bottom-center (between HP bar and gold)
+  - Show cooldown pie-timer overlay on each icon
+  - Show key hint: [Q] [R]
+```
+
+### 5.4 Elite Mode
+
+Unlock after completing wave 50:
+
+```
+In localStorage: save 'koa_elite_unlocked' = true after victory
+
+On main menu:
+  - If elite unlocked: show "ELITE MODE" button below normal start
+  - Elite button has red/gold styling with skull icon
+
+Elite mode changes (pass eliteMode=true to resetGame):
+  - All enemies: hp * 2, damage * 1.5
+  - Enemy speed: +15%
+  - Gold drops: +25% (harder but more rewarding)
+  - Separate high score: 'koa_elite_highscore' in localStorage
+  - Red tint overlay on screen edges (vignette) during elite
+  - Wave announcement prefix: "⚠ ELITE — Wave X"
+  - Victory screen: "ELITE CHAMPION" title with special gold particle effect
+```
+
+### 5.5 End-of-Run Stats Screen
+
+Replace the plain victory/game-over screens with a detailed stats card:
+
+```
+Track these in main.js throughout the run (reset on resetGame):
+  totalKills, goldEarned, goldSpent, buildingsBought, weaponUpgrades,
+  troopsHired, wallRepairs, wavesCompleted, timeElapsed (seconds),
+  damageDealt, damageTaken, potionsUsed, highestKillStreak
+
+On game over AND victory: show a stats panel (modal overlay, scrollable):
+  "RUN COMPLETE" (or "DEFEAT") header
+  Grid of stat tiles:
+    ⚔ X Enemies Slain   🏰 Wave X/50
+    💰 X Gold Earned     ⏱ Xm Xs
+    🏗 X Buildings       🗡 X Upgrades
+    💊 X Potions         🔥 X Kill Streak
+  If new high score: pulsing gold "NEW BEST!" badge
+  Two buttons: "Play Again" and "Main Menu"
+```
+
+### 5.6 Wave Flavour Text
+
+Add a short flavour string to each wave milestone shown in the wave announcement:
+
+```
+In config.js, add WAVE_FLAVOUR object:
+  1:  'The siege begins. Hold the line.',
+  5:  'Orc Soldiers join the assault.',
+  8:  'Goblin Bombers detected. Watch the fuses.',
+  10: 'They come from multiple directions now.',
+  15: '⚠ BOSS WAVE — Iron Fist approaches.',
+  20: 'Orc Knights lead the charge.',
+  25: '⚠ BOSS WAVE — Bloodtusk has arrived.',
+  30: 'Orc Wizards bring dark magic.',
+  35: '⚠ BOSS WAVE — The Siege King commands them.',
+  40: 'The horde is relentless. Do not falter.',
+  45: '⚠ BOSS WAVE — Warchief Gronn is here.',
+  50: '⚠ FINAL WAVE — The Titan Lord. This ends now.',
+
+In hud.js drawWaveAnnouncement():
+  - Show wave number large as before
+  - Below it, show WAVE_FLAVOUR[wave] in smaller italic text if it exists
+  - Flavour text fades in 0.3s after the wave number appears
+```
+
+### 5.7 Balance Pass
+
+Review and fix game balance across waves 1-50:
+
+```
+Issues to check and fix:
+- Wave 1-4: ensure player can survive with starting shortsword
+- Wave 15-20: difficulty spike check (boss + new enemies simultaneously)
+- Economy: verify player can afford at least 2-3 buildings by wave 20
+- Potion cost (200g) vs gold income per wave — is it achievable?
+- Troop costs vs utility — are troops worth hiring?
+- Skill costs vs their impact — are any skills trap options?
+- Ranged weapon damage vs melee at same tier — should be viable alternative
+- Check ogreSoldier (wave 35) stats are correctly scaled
+
+Run a paper simulation: gold income waves 1-50 vs upgrade costs. Flag
+any waves where the player would have no meaningful purchase available.
+```
+
+### 5.8 Potion Accessibility Fix
+
+Potions are currently hidden and gated behind Wizard Tower. Fix this:
+
+```
+In config.js POTIONS, add a basic potion available from the start:
+  minorHeal: { name: 'Minor Heal Potion', heal: 25, cost: 100,
+               maxCarry: 5, requires: null,
+               description: 'Restore 25 HP instantly. Basic field medicine.' }
+
+The existing stoneskin potion stays as-is (still requires wizardTower).
+
+In shopUI.js:
+  - Add a new 'CONSUMABLES' tab to the TABS array: ['BUILDINGS', 'EQUIPMENT', 'TROOPS', 'SKILLS', 'CONSUMABLES']
+  - Move ALL potion purchases to the Consumables tab
+  - Remove potions from the Equipment tab entirely
+  - Consumables tab shows: Minor Heal Potion (always), Stoneskin Potion (if wizardTower built)
+  - Tab header shows a flask icon 🧪
+  - First time player opens shop, Consumables tab has a subtle pulsing gold dot indicator
+
+In player.js:
+  - player.potions is now an object: { minorHeal: 0, stoneskin: 0 }
+  - Using potion (Q key if no active skill, or dedicated key): use stoneskin first if available, else minorHeal
+  - HUD shows potion count as: 🧪 X (total potions carried)
+```
+
+### 5.9 Shop Discoverability
+
+```
+Track which tabs have new purchasable items since last shop open:
+  - In shopUI state: newItemTabs = Set of tab indices with new items
+  - When a building is purchased that unlocks new items: mark affected tabs
+  - When shop opens after a new wave: check if any new items became affordable
+  - Draw a small gold dot (6px circle, pulsing opacity) on tab labels with new items
+  - Dot clears when player clicks that tab
+```
+
+### Files changed in Sprint 5
+
+```
+MODIFIED:
+  src/config.js          — boss lore table, wave flavour text, active skills,
+                           horde event flag, elite mode constants, minor heal potion
+  src/main.js            — elite mode logic, run stats tracking, horde event trigger
+  src/systems/waveManager.js — horde event spawning
+  src/systems/combat.js  — activateWarCry, activateShieldBash
+  src/systems/hud.js     — active skill icons + cooldown timers, wave flavour text,
+                           potion count display
+  src/systems/shopUI.js  — consumables tab, new item dot indicators
+  src/systems/audio.js   — horde drum sound, war cry horn sound
+  src/entities/player.js — active skill equip/cooldown system, potion object
+  src/ui/mainMenu.js     — elite mode button
+  src/ui/gameOver.js     — stats screen
+  src/ui/victory.js      — stats screen + elite champion variant
+NEW:
+  (none — all changes are additive to existing files)
+```
+
+### Sprint 5 — Suggested Agent Workflow
+
+```
+STEP 1: /agents game-designer
+  "Read DEVPLAN.md Sprint 5 sections 5.3 and 5.7. Review the two active
+   skills (War Cry, Shield Bash) — are their cooldowns, costs, and effects
+   well-balanced against the passive skills? Run a balance check on the
+   economy simulation for waves 1-50 and flag any dead zones where the
+   player has nothing meaningful to buy."
+
+STEP 2: /agents narrative-designer
+  "Read DEVPLAN.md Sprint 5 sections 5.2 and 5.6. Review the boss names,
+   lore lines, and wave flavour text. Do they fit a gritty medieval castle
+   defense tone? Suggest improvements or alternatives for any that feel
+   weak. Output final approved text for all entries."
+
+STEP 3: /agents engineering-frontend-developer
+  "Read DEVPLAN.md and implement Sprint 5 (sections 5.1 through 5.9) in
+   order. Use the approved narrative text from Step 2. Implement horde
+   events, boss intro cards, active skills, elite mode, stats screen,
+   wave flavour text, balance fixes, and the consumables tab. The game
+   must be fully playable and bug-free after this sprint."
+
+STEP 4: /agents engineering-code-reviewer
+  "Review all Sprint 5 changes. Check for: active skill edge cases
+   (using skill when no enemies present, cooldown display off by one),
+   elite mode state not resetting correctly, stats screen missing resets,
+   potion object migration breaking existing save data. Flag any issues."
+```
+
+---
+
 ## Sprint Order Summary
 
 ```
@@ -692,6 +952,8 @@ Sprint 1 — Build tree expansion (new buildings, passive effects, courtyard vis
 Sprint 2 — Weapon categories & upgrade paths
 Sprint 3 — Tech tree UI & shop overhaul
 Sprint 4 — Visual polish (entities, HUD, effects, particles)
+Sprint 5 — Content depth (horde events, boss cards, active skills, elite mode,
+           stats screen, wave flavour, balance, potion accessibility)
 ```
 
 Each sprint is self-contained and playable after completion.
@@ -738,4 +1000,15 @@ Read DEVPLAN.md and implement Sprint 4 (sections 4.1 through 4.4).
 Upgrade entity rendering with distinct silhouettes, polish the HUD,
 add shop UI cards with stat comparison, and implement particle effects.
 Target 60fps at wave 40+.
+```
+
+### Start Sprint 5
+```
+Read DEVPLAN.md and implement Sprint 5 (sections 5.1 through 5.9).
+Implement horde wave events, boss intro cards with lore text, two active
+skills (War Cry + Shield Bash) with Q/R hotkeys and cooldown HUD icons,
+elite mode unlocked after victory, end-of-run stats screen, wave flavour
+text, a balance pass across waves 1-50, a new Consumables tab in the shop
+with an accessible Minor Heal Potion available from wave 1, and shop tab
+discoverability dots. The game must be fully playable after this sprint.
 ```
