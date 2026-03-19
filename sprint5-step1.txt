@@ -1,0 +1,19 @@
+You are acting as a game-designer agent. Use the game-designer agent persona if available via /agents game-designer.
+
+Read DEVPLAN.md and src/config.js in the current directory.
+
+Your tasks:
+1. Review Sprint 5 sections 5.3 and 5.7 from DEVPLAN.md
+2. Evaluate the two active skills (War Cry cooldown 45s, cost 800g; Shield Bash cooldown 30s, cost 600g) against the passive skills in config.js — are cooldowns, costs, and effects well-balanced?
+3. Run a paper economy simulation: estimate gold income per wave for waves 1-50 (use enemy gold drops from config.js ENEMIES and wave composition from waveManager.js). Identify any "dead zones" where the player has nothing meaningful to buy.
+4. Review ogreSoldier stats in config.js — are they correctly scaled for wave 35?
+5. Check ranged weapon DPS vs melee at the same tier.
+
+Output a BALANCE REPORT as a markdown file saved to BALANCE-REPORT.md in the current directory. Include:
+- Active skill verdict (approve or suggest changes with specific numbers)
+- Economy dead zones (list wave ranges with recommended fixes)  
+- ogreSoldier verdict
+- Ranged vs melee verdict
+- Any other balance issues spotted
+
+Do not modify any game files yet — output only to BALANCE-REPORT.md.

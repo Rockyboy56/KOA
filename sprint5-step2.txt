@@ -1,0 +1,19 @@
+You are acting as a narrative-designer agent. Use the narrative-designer agent persona if available via /agents narrative-designer.
+
+Read DEVPLAN.md and BALANCE-REPORT.md in the current directory.
+
+Your tasks:
+1. Review Sprint 5 sections 5.2 and 5.6 from DEVPLAN.md
+2. Review the 5 boss names and lore lines proposed in section 5.2
+3. Review the 12 wave flavour text entries proposed in section 5.6
+4. The tone is: gritty medieval castle defense, serious but not grimdark, KOA is a Ninja Kiwi game so it should feel action-packed and punchy not overly literary
+5. Suggest improvements for any that feel weak, generic, or off-tone
+6. Write FINAL approved text for all entries (boss names, lore lines, wave flavour strings)
+7. Also write short wave flavour for waves 2, 3, 4 (currently missing) to cover early game
+
+Output a NARRATIVE-REPORT.md file in the current directory with:
+- Final boss entry table (name + lore for each of the 5 bosses)
+- Final wave flavour text for waves 1-10 and milestone waves 15/20/25/30/35/40/45/50
+- Brief rationale for any changes made
+
+Do not modify any game files — output only to NARRATIVE-REPORT.md.

@@ -1,0 +1,80 @@
+You are acting as an engineering-frontend-developer agent. Use the engineering-frontend-developer persona if available via /agents engineering-frontend-developer.
+
+Read DEVPLAN.md, BALANCE-REPORT.md, and NARRATIVE-REPORT.md in the current directory before starting. All three inform what you will build.
+
+Implement Sprint 5 (sections 5.1 through 5.9) from DEVPLAN.md. Work through each sub-task in order. Apply all balance fixes from BALANCE-REPORT.md and use the final narrative text from NARRATIVE-REPORT.md.
+
+## IMPLEMENTATION ORDER
+
+### 5.1 Horde Wave Events
+- Add hordeEventFired flag to waveManager state
+- At waves 10, 20, 30, 40: spawn 15 raiders from all active sides simultaneously with 1.5x speed
+- Show "⚠ HORDE INCOMING!" red banner for 1.5s (use existing announcement system)
+- Add rapid drum audio cue in audio.js (4 quick low-freq oscillator hits, 0.5s)
+
+### 5.2 Boss Intro Cards
+- Use boss names/lore from NARRATIVE-REPORT.md (not DEVPLAN.md - narrative team revised them)
+- Add bosses array to ENEMIES.titan in config.js with {name, lore} for each of the 5 boss waves (15/25/35/45/50)
+- When titan spawns: freeze spawning 2s, show intro card overlay (dark vignette + slide-in card from bottom)
+- Card: boss name large, lore line below, red HP bar labelled TITAN
+- Auto-dismiss after 2s, then titan appears
+
+### 5.3 Active Skills
+- War Cry: cost 1,500g (balance fix), cooldown 60s, requires barracks, stuns all enemies 2s
+- Shield Bash: cost 600g, cooldown 38s (balance fix), 200px radius knockback
+- Add to config.js SKILLS with type:'active'
+- player.activeSkills = [] (max 2), player.skillCooldowns = {}
+- Q key = activeSkills[0], R key = activeSkills[1]
+- In combat.js: activateWarCry() and activateShieldBash() functions
+- In hud.js: 2 skill slot icons bottom-center, pie-timer cooldown overlay, [Q][R] labels
+
+### 5.4 Elite Mode
+- After wave 50 victory: localStorage.setItem('koa_elite_unlocked', 'true')
+- Main menu: if elite unlocked, show ELITE MODE button (red/gold, skull icon)
+- elite flag passed to resetGame, affects enemy hp/damage/speed, gold+25%, separate high score
+- Red vignette overlay during elite (rgba(180,0,0,0.08) around screen edges)
+- Wave announcement prefixed "⚠ ELITE —"
+
+### 5.5 Stats Screen
+- Track in main.js: totalKills, goldEarned, goldSpent, buildingsBought, weaponUpgrades, troopsHired, wallRepairs, wavesCompleted, timeElapsed, damageDealt, damageTaken, potionsUsed, highestKillStreak
+- Replace gameOver.js and victory.js screens with detailed stats panel
+- Grid of stat tiles, new high score badge, Play Again + Main Menu buttons
+- Victory variant shows "ELITE CHAMPION" if elite mode
+
+### 5.6 Wave Flavour Text
+- Use the FINAL wave flavour text from NARRATIVE-REPORT.md (not DEVPLAN.md)
+- Add WAVE_FLAVOUR object to config.js
+- In hud.js drawWaveAnnouncement(): show flavour text in smaller italic below wave number, fade in 0.3s after
+
+### 5.7 Balance Fixes (from BALANCE-REPORT.md)
+Apply ALL fixes listed:
+- War Cry cost/cooldown (already in 5.3 above)
+- Shield Bash cooldown (already in 5.3 above)
+- Alchemist Lab cost: 1,500g → 1,000g
+- Add mid-tier weapons to bridge the 26-34 wave dead zone
+- Reduce T5 weapon costs by 30-40%
+- Fix ogreSoldier spawn formula bug (and other off-by-N bugs listed)
+- Fix ranged weapon damage at T3-T5 per specific numbers in report
+- Fix crystal economy (define crystals properly in economy.js or remove the dead feature)
+- Fix armor speed penalty inversion (Adamantine Plate vs Full Plate)
+
+### 5.8 Potion Accessibility
+- Add minorHeal potion to config.js POTIONS (heal 25, cost 100, maxCarry 5, requires null)
+- Add 'CONSUMABLES' tab to shop TABS array
+- Move all potions to Consumables tab, remove from Equipment tab
+- player.potions becomes object: { minorHeal: 0, stoneskin: 0 }
+- Potion use priority: stoneskin first, then minorHeal
+- HUD shows total potion count as 🧪 X
+
+### 5.9 Shop Discoverability
+- Track newItemTabs Set in shopUI state
+- Mark tabs when new items become available (building purchased, new wave)
+- Draw gold pulsing dot on tab labels with new items
+- Dot clears on tab click
+
+## IMPORTANT NOTES
+- This is a Vite + ES6 modules project. Do not break imports.
+- Run `npm install` first if node_modules doesn't exist
+- After all changes: run `npm run build` to verify no build errors
+- Fix any build errors before finishing
+- git add -A, git commit -m "Sprint 5 - content depth, endgame, potion accessibility", git push origin main

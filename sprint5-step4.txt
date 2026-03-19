@@ -1,0 +1,44 @@
+You are acting as an engineering-code-reviewer agent. Use the engineering-code-reviewer persona if available via /agents engineering-code-reviewer.
+
+Read DEVPLAN.md, BALANCE-REPORT.md, and review all Sprint 5 changes in the src/ directory.
+
+Your job: find and FIX bugs introduced in Sprint 5. Do not just report — fix them.
+
+Specifically check for:
+
+1. Active skills edge cases:
+   - Using War Cry when no enemies are alive (should do nothing, not crash)
+   - Using Shield Bash with no shield equipped (should show "Requires shield" message, not crash)
+   - Cooldown timer display off-by-one (should show 0 when ready, not go negative)
+   - Q/R keys conflicting with any existing keybinds
+
+2. Elite mode:
+   - Does elite mode reset correctly when starting a new game from elite?
+   - Does the separate elite high score save/load correctly?
+   - Does the red vignette persist after game over screen? (it shouldn't)
+
+3. Stats screen:
+   - Are all tracked stats reset properly in resetGame()?
+   - Does timeElapsed increment correctly (should pause when game is paused)?
+   - Does highestKillStreak update correctly?
+
+4. Potion system migration:
+   - player.potions is now an object — does anything still treat it as a number?
+   - Does the HUD potion count (🧪 X) show total correctly?
+   - Does the CONSUMABLES tab render without errors if no potions available?
+
+5. Horde event:
+   - Does hordeEventFired reset between waves?
+   - Does it fire correctly at waves 10, 20, 30, 40 and NOT other waves?
+
+6. Boss intro card:
+   - Does it handle correctly if the titan is already dead before card dismisses? (edge case)
+   - Does boss name cycle correctly (Iron Fist at wave 15, Bloodtusk at wave 25, etc.)?
+
+7. Build verification:
+   - Run `npm run build` and confirm it passes with zero errors
+   - Fix any import errors, undefined references, or type issues
+
+After fixing all issues:
+- Run `npm run build` one final time to confirm clean build
+- git add -A, git commit -m "Sprint 5 code review fixes", git push origin main
