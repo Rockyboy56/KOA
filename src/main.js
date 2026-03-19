@@ -8,9 +8,9 @@ import { createBarricades, drawBarricades, repairWall, upgradeBarricades, getNea
 import { updateGoldDrops, drawGoldDrop, createGoldDrop } from './entities/goldDrop.js';
 import { updateProjectiles, drawProjectile } from './entities/projectile.js';
 import { createTroop, updateTroop, drawTroop } from './entities/troop.js';
-import { createWaveManager, startNextWave, updateWaveSpawning } from './systems/waveManager.js';
+import { createWaveManager, startNextWave, updateWaveSpawning, getSpawnSides, getSpawnPosition } from './systems/waveManager.js';
 import { processCombat, updateFloatingTexts, createFloatingText, handleEnemyDeath, activateWarCry, activateShieldBash } from './systems/combat.js';
-import { createEconomy, applyWaveEndPassives, getBuildingDamageMult } from './systems/economy.js';
+import { createEconomy, applyWaveEndPassives, getBuildingDamageMult, getEquippedWeapon as getEquippedWeaponForBash } from './systems/economy.js';
 import { drawHUD, drawWaveAnnouncement, drawTutorial, drawBossHP, drawDamageNumbers, resetHUDState, showHordeBanner, updateHordeBanner, drawHordeBanner, drawBossIntroCard } from './systems/hud.js';
 import { updateParticles, drawParticles, drawScreenParticles, spawnDeathBurst, spawnGoldSparkle, spawnBossFlash, updateScreenFlash, updateAmbient, resetParticles, spawnCritRing } from './systems/particles.js';
 import { drawShop, updateShop, resetShop } from './systems/shopUI.js';
@@ -220,8 +220,11 @@ function startWave() {
     setBossIntensity(true);
 
     // Boss intro card: pick named boss based on wave
-    const bossIndex = Math.floor((waveManager.wave - 1) / 10) % (ENEMIES.titan.bosses ? ENEMIES.titan.bosses.length : 1);
+    // Boss waves are 15, 25, 35, 45, 50 → mapped to bosses[0..4]
     const bosses = ENEMIES.titan.bosses || [];
+    const bossIndex = waveManager.wave === 50
+      ? Math.min(4, bosses.length - 1)
+      : Math.min(Math.floor((waveManager.wave - 15) / 10), bosses.length - 1);
     bossIntroData = bosses[bossIndex] || { name: 'The Titan', lore: 'A fearsome warrior.' };
     bossIntroTimer = 4.0;
   } else {
@@ -267,26 +270,47 @@ function updatePlaying(dt, mouseClicked, mouse) {
   waveAnnouncementTimer -= dt;
   if (wave2TutorialTimer > 0) wave2TutorialTimer -= dt;
 
-  // Horde event: trigger once per wave when horde pending and first enemy spawned
+  // Horde event: trigger once per wave (waves 10,20,30,40) when first enemy has spawned
   if (waveManager.hordeEventPending && !waveManager.hordeEventFired && enemies.length > 0) {
     waveManager.hordeEventFired = true;
     waveManager.hordeEventPending = false;
     showHordeBanner();
     playHordeDrum();
+    // Spawn 15 frenzied raiders from all active sides simultaneously
+    const hordeSides = getSpawnSides(waveManager.wave);
+    for (let i = 0; i < 15; i++) {
+      const side = hordeSides[i % hordeSides.length];
+      const pos = getSpawnPosition(side);
+      const hordeRaider = createEnemy('raider', waveManager.wave, pos.x, pos.y, side, eliteMode);
+      hordeRaider.speed *= 1.5; // frenzied speed
+      hordeRaider.buffed = true; // mark as horde member
+      enemies.push(hordeRaider);
+      waveManager.enemiesAlive++;
+    }
   }
 
   // Active skills (Q = War Cry, R = Shield Bash)
   if (isSkillQ() && player.activeSkills && player.activeSkills.includes('warCry')) {
     const cd = player.skillCooldowns && player.skillCooldowns['warCry'] || 0;
     if (cd <= 0) {
-      activateWarCry(player, enemies, floatingTexts);
-      playWarCryHorn();
+      const aliveEnemies = enemies.filter(e => e.alive);
+      if (aliveEnemies.length > 0) {
+        activateWarCry(player, enemies, floatingTexts);
+        playWarCryHorn();
+      }
+      // If no enemies alive, skill does nothing and cooldown is not consumed
     }
   }
   if (isSkillR() && player.activeSkills && player.activeSkills.includes('shieldBash')) {
     const cd = player.skillCooldowns && player.skillCooldowns['shieldBash'] || 0;
     if (cd <= 0) {
-      activateShieldBash(player, enemies);
+      // Shield Bash requires a shield (not usable with 2h or ranged weapon types)
+      const bashWeapon = getEquippedWeaponForBash(player);
+      if (bashWeapon && (bashWeapon.type === '2h' || bashWeapon.type === 'ranged')) {
+        floatingTexts.push(createFloatingText(player.x + player.width / 2, player.y - 20, 'Requires shield', '#ff8800'));
+      } else {
+        activateShieldBash(player, enemies);
+      }
     }
   }
 

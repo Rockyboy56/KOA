@@ -58,7 +58,7 @@ export function getSpawnSides(wave) {
 }
 
 /** Get a random spawn position for a given side. */
-function getSpawnPosition(side) {
+export function getSpawnPosition(side) {
   switch (side) {
     case 'north': return { x: randRange(500, 1300), y: 40 };
     case 'south': return { x: randRange(500, 1300), y: 1160 };

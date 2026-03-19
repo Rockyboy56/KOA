@@ -215,9 +215,12 @@ export function updatePlayer(p, dt, walls, mouseX, mouseY, camX, camY) {
     }
   }
 
-  // Active skill cooldowns
+  // Active skill cooldowns — clamp to 0 to prevent negative or fractional display
   for (const key of Object.keys(p.skillCooldowns)) {
-    if (p.skillCooldowns[key] > 0) p.skillCooldowns[key] -= dt;
+    if (p.skillCooldowns[key] > 0) {
+      p.skillCooldowns[key] -= dt;
+      if (p.skillCooldowns[key] < 0) p.skillCooldowns[key] = 0;
+    }
   }
 
   // Movement with wall collision (separate X/Y axes for wall sliding)
