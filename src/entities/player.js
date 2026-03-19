@@ -1,4 +1,4 @@
-import { PLAYER, ATTACK, ARMORS, SHIELDS, WORLD_W, WORLD_H, FORT, GATES, POTIONS } from '../config.js';
+import { PLAYER, ATTACK, ARMORS, SHIELDS, WORLD_W, WORLD_H, FORT, GATES, POTIONS, ACTIVE_SKILLS } from '../config.js';
 import { clamp } from '../utils/math.js';
 import * as Input from '../input.js';
 import { drawRect, drawBar, drawText, drawCircle, shake, getCtx } from '../renderer.js';
@@ -45,7 +45,16 @@ export function createPlayer() {
     shield: 'wooden',
 
     // Consumables
-    potions: 0,
+    potions: { minorHeal: 0, stoneskin: 0 },
+
+    // Active skills
+    activeSkills: [],       // array of equipped active skill keys (max 2)
+    skillCooldowns: {},     // { warCry: 0, shieldBash: 0 }
+
+    // Run stats tracking
+    potionsUsed: 0,
+    weaponUpgrades: 0,
+    totalDamageTaken: 0,
 
     // Level / XP
     level: 1,
@@ -193,10 +202,22 @@ export function updatePlayer(p, dt, walls, mouseX, mouseY, camX, camY) {
     }
   }
 
-  // Potion
-  if (Input.isPotion() && p.potions > 0 && p.hp < p.maxHP) {
-    p.potions--;
-    p.hp = Math.min(p.maxHP, p.hp + POTIONS.stoneskin.heal);
+  // Potion use (Digit1 key)
+  if (Input.isPotion() && p.hp < p.maxHP) {
+    if (p.potions.stoneskin > 0) {
+      p.potions.stoneskin--;
+      p.hp = Math.min(p.maxHP, p.hp + POTIONS.stoneskin.heal);
+      p.potionsUsed++;
+    } else if (p.potions.minorHeal > 0) {
+      p.potions.minorHeal--;
+      p.hp = Math.min(p.maxHP, p.hp + POTIONS.minorHeal.heal);
+      p.potionsUsed++;
+    }
+  }
+
+  // Active skill cooldowns
+  for (const key of Object.keys(p.skillCooldowns)) {
+    if (p.skillCooldowns[key] > 0) p.skillCooldowns[key] -= dt;
   }
 
   // Movement with wall collision (separate X/Y axes for wall sliding)
@@ -287,6 +308,7 @@ export function damagePlayer(p, amount, isMagic = false) {
   dmg = Math.max(1, Math.round(dmg));
   p.hp -= dmg;
   p.damageTakenThisWave += dmg;
+  p.totalDamageTaken += dmg;
   p.flashTimer = 0.15;
   shake(3, 80);
 
@@ -334,6 +356,8 @@ const WEAPON_VISUALS = {
   deflectionGladius: { bladeLen: 16, bladeW: 2, color: '#ccd', hilite: '#fff', grip: '#556', guard: '#778', glow: '#88aadd', arc: 0.5 },
   twinDaggers:     { type: 'twin', bladeLen: 10, color: '#bbc', grip: '#554', glow: null, arc: 0.5 },
   flailThrashing:  { type: 'flail', haftLen: 12, chainLen: 12, headR: 7, color: '#888', grip: '#5a3a1a', glow: null, arc: 0.9, spiked: true },
+  orcSlayer:       { bladeLen: 18, bladeW: 2.5, color: '#c88', hilite: '#faa', grip: '#554', guard: '#888', glow: null, arc: 0.7 },
+  siegeHammer:     { type: 'mace', haftLen: 20, headR: 9, headRect: true, color: '#666', grip: '#442', glow: null, arc: 1.0, impactRing: true },
 };
 
 // ─── Armor Visual Lookup Table ───

@@ -441,3 +441,35 @@ export function updateFloatingTexts(texts, dt) {
 }
 
 // drawFloatingTexts removed — replaced by drawDamageNumbers in hud.js
+
+export function activateWarCry(player, enemies, floatingTexts) {
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    e.stunTimer = 2.0;
+    e.attackTimer = Math.max(e.attackTimer, 2.0);
+    floatingTexts.push(createFloatingText(e.x + e.width / 2, e.y - 15, 'STUNNED', '#ffff00'));
+  }
+  // Start cooldown
+  player.skillCooldowns['warCry'] = 60;
+}
+
+export function activateShieldBash(player, enemies) {
+  const pcx = player.x + player.width / 2;
+  const pcy = player.y + player.height / 2;
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    const ecx = e.x + e.width / 2;
+    const ecy = e.y + e.height / 2;
+    const d = dist(pcx, pcy, ecx, ecy);
+    if (d < 200) {
+      const angle = Math.atan2(ecy - pcy, ecx - pcx);
+      const force = 200 * (1 - e.knockbackResist);
+      e.x += Math.cos(angle) * force;
+      e.y += Math.sin(angle) * force;
+      // clamp to world bounds
+      e.x = clamp(e.x, 0, WORLD_W - e.width);
+      e.y = clamp(e.y, 0, WORLD_H - e.height);
+    }
+  }
+  player.skillCooldowns['shieldBash'] = 38;
+}

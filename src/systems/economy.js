@@ -1,4 +1,4 @@
-import { BUILDINGS, WEAPON_CLASSES, SPECIAL_WEAPONS, ARMORS, SHIELDS, TROOPS, POTIONS, BARRICADES } from '../config.js';
+import { BUILDINGS, WEAPON_CLASSES, SPECIAL_WEAPONS, ARMORS, SHIELDS, TROOPS, POTIONS, ACTIVE_SKILLS, BARRICADES } from '../config.js';
 
 export function createEconomy() {
   return {
@@ -9,6 +9,8 @@ export function createEconomy() {
     ownedShields: { wooden: true },
     troops: [],           // [{ typeKey, alive }]
     troopCounts: {},      // { footman: 2, ... }
+    buildingsBought: 0,
+    troopsHired: 0,
   };
 }
 
@@ -59,6 +61,7 @@ export function upgradeWeapon(econ, player, discount = 0) {
   econ.gold -= cost;
   player.weaponTier++;
   player.weaponSpecial = null;
+  player.weaponUpgrades = (player.weaponUpgrades || 0) + 1;
   return true;
 }
 
@@ -87,6 +90,7 @@ export function switchWeaponClass(econ, player, classKey, discount = 0) {
   player.weaponClass = classKey;
   player.weaponTier = 0;
   player.weaponSpecial = null;
+  player.weaponUpgrades = (player.weaponUpgrades || 0) + 1;
   return true;
 }
 
@@ -107,6 +111,7 @@ export function buySpecialWeapon(econ, player, key, discount = 0) {
   if (econ.gold < cost) return false;
   econ.gold -= cost;
   player.weaponSpecial = key;
+  player.weaponUpgrades = (player.weaponUpgrades || 0) + 1;
   return true;
 }
 
@@ -159,6 +164,7 @@ export function buyBuilding(econ, key, discount = 0) {
   const def = BUILDINGS[key];
   spend(econ, def.cost, discount);
   econ.buildings[key] = true;
+  econ.buildingsBought++;
 }
 
 // Old flat weapon buy/sell removed — use class-based upgrade system instead
@@ -201,14 +207,37 @@ export function canHireTroop(econ, typeKey, discount = 0) {
 export function hireTroop(econ, typeKey, discount = 0) {
   spend(econ, TROOPS[typeKey].cost, discount);
   econ.troopCounts[typeKey] = (econ.troopCounts[typeKey] || 0) + 1;
+  econ.troopsHired = (econ.troopsHired || 0) + 1;
 }
 
-export function canBuyPotion(econ, currentCount, discount = 0) {
-  if (currentCount >= POTIONS.stoneskin.maxCarry) return false;
-  if (!econ.buildings.wizardTower) return false;
-  return canAfford(econ, POTIONS.stoneskin.cost, discount);
+export function canBuyPotion(econ, potionKey, currentCount, discount = 0) {
+  const def = POTIONS[potionKey];
+  if (!def) return false;
+  if (currentCount >= def.maxCarry) return false;
+  if (def.requires && !econ.buildings[def.requires]) return false;
+  return canAfford(econ, def.cost, discount);
 }
 
-export function buyPotion(econ, discount = 0) {
-  return spend(econ, POTIONS.stoneskin.cost, discount);
+export function buyPotion(econ, potionKey, discount = 0) {
+  return spend(econ, POTIONS[potionKey].cost, discount);
+}
+
+export function canBuyActiveSkill(econ, skillKey, player, discount = 0) {
+  const def = ACTIVE_SKILLS[skillKey];
+  if (!def) return false;
+  if (player.activeSkills && player.activeSkills.includes(skillKey)) return false;
+  if (player.activeSkills && player.activeSkills.length >= 2) return false;
+  if (def.requires && !econ.buildings[def.requires]) return false;
+  return canAfford(econ, def.cost, discount);
+}
+
+export function buyActiveSkill(econ, skillKey, player, discount = 0) {
+  const def = ACTIVE_SKILLS[skillKey];
+  if (!def) return false;
+  spend(econ, def.cost, discount);
+  if (!player.activeSkills) player.activeSkills = [];
+  player.activeSkills.push(skillKey);
+  if (!player.skillCooldowns) player.skillCooldowns = {};
+  player.skillCooldowns[skillKey] = 0;
+  return true;
 }

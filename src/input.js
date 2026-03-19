@@ -59,4 +59,6 @@ export function isRegroup()     { return !!justPressed['KeyG']; }
 export function isPotion()      { return !!justPressed['Digit1']; }
 export function isPause()       { return !!justPressed['Escape']; }
 export function isMuteToggle()  { return !!justPressed['KeyM']; }
+export function isSkillQ() { return !!justPressed['KeyQ']; }
+export function isSkillR() { return !!justPressed['KeyR']; }
 export function getWheelDelta() { const d = wheelDelta; wheelDelta = 0; return d; }

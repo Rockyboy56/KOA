@@ -264,6 +264,20 @@ export function playPurchase() {
   playTone('sine', 1200, 1200, 0.06, 0.12, 0.06);
 }
 
+export function playHordeDrum() {
+  if (!ensureContext()) return;
+  for (let i = 0; i < 4; i++) {
+    playTone('triangle', 80, 40, 0.10, 0.3, i * 0.125);
+  }
+  playNoise(0.5, 0.12, 200, 'lowpass');
+}
+
+export function playWarCryHorn() {
+  if (!ensureContext()) return;
+  playTone('sawtooth', 220, 330, 0.4, 0.25);
+  playTone('sawtooth', 440, 550, 0.3, 0.2, 0.15);
+}
+
 // ─── Background Music — Chiptune Medieval Loop ──────────────────
 
 // Simple chord progression in Am: A2, F2, C3, G2

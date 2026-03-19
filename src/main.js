@@ -1,17 +1,17 @@
-import { WORLD_W, WORLD_H, VIEW_W, VIEW_H, FORT, PLAYER, getWaveBonus } from './config.js';
-import { initInput, clearFrameInput, getMouse, isRegroup, isRepair, isPause, isMuteToggle } from './input.js';
-import { initAudio, ensureContext, toggleMute, isMuted, playWaveStart, playBossSpawn, playGoldPickup, playLevelUp, playShopClick, playRepair, startMusic, stopMusic, setBossIntensity } from './systems/audio.js';
+import { WORLD_W, WORLD_H, VIEW_W, VIEW_H, FORT, PLAYER, getWaveBonus, ENEMIES, ELITE_MODE, ACTIVE_SKILLS } from './config.js';
+import { initInput, clearFrameInput, getMouse, isRegroup, isRepair, isPause, isMuteToggle, isSkillQ, isSkillR } from './input.js';
+import { initAudio, ensureContext, toggleMute, isMuted, playWaveStart, playBossSpawn, playGoldPickup, playLevelUp, playShopClick, playRepair, startMusic, stopMusic, setBossIntensity, playHordeDrum, playWarCryHorn } from './systems/audio.js';
 import { initRenderer, clearScreen, drawBackground, drawTextCentered, updateShake, endShake, getCtx, startFade, updateFade, drawFade, rebuildBackground, drawBuildingVisuals, drawTorchFlicker } from './renderer.js';
 import { createPlayer, updatePlayer, drawPlayer, recalcStats, addXP } from './entities/player.js';
-import { updateEnemy, drawEnemy, damageEnemy } from './entities/enemy.js';
+import { createEnemy, updateEnemy, drawEnemy, damageEnemy } from './entities/enemy.js';
 import { createBarricades, drawBarricades, repairWall, upgradeBarricades, getNearestWall, getWallSegments } from './entities/barricade.js';
 import { updateGoldDrops, drawGoldDrop, createGoldDrop } from './entities/goldDrop.js';
 import { updateProjectiles, drawProjectile } from './entities/projectile.js';
 import { createTroop, updateTroop, drawTroop } from './entities/troop.js';
 import { createWaveManager, startNextWave, updateWaveSpawning } from './systems/waveManager.js';
-import { processCombat, updateFloatingTexts, createFloatingText, handleEnemyDeath } from './systems/combat.js';
+import { processCombat, updateFloatingTexts, createFloatingText, handleEnemyDeath, activateWarCry, activateShieldBash } from './systems/combat.js';
 import { createEconomy, applyWaveEndPassives, getBuildingDamageMult } from './systems/economy.js';
-import { drawHUD, drawWaveAnnouncement, drawTutorial, drawBossHP, drawDamageNumbers, resetHUDState } from './systems/hud.js';
+import { drawHUD, drawWaveAnnouncement, drawTutorial, drawBossHP, drawDamageNumbers, resetHUDState, showHordeBanner, updateHordeBanner, drawHordeBanner, drawBossIntroCard } from './systems/hud.js';
 import { updateParticles, drawParticles, drawScreenParticles, spawnDeathBurst, spawnGoldSparkle, spawnBossFlash, updateScreenFlash, updateAmbient, resetParticles, spawnCritRing } from './systems/particles.js';
 import { drawShop, updateShop, resetShop } from './systems/shopUI.js';
 import { drawMainMenu } from './ui/mainMenu.js';
@@ -24,9 +24,12 @@ import { pointInRect } from './utils/collision.js';
 
 // --- High Score ---
 let highScore = parseInt(localStorage.getItem('koa_highscore') || '0', 10);
+let eliteHighScore = parseInt(localStorage.getItem('koa_elite_highscore') || '0', 10);
+let eliteUnlocked = localStorage.getItem('koa_elite_unlocked') === 'true';
 
 // --- Game State ---
 let state = 'menu'; // menu, playing, shop, gameOver, victory, paused
+let eliteMode = false;
 let player, walls, waveManager, economy, camera;
 let enemies = [];
 let goldDrops = [];
@@ -61,17 +64,34 @@ let levelUpTextTimer = 0;
 // Track kills for streak detection
 let prevKills = 0;
 
+// Run stats
+let runStats = {
+  goldEarned: 0,
+  buildingsBought: 0,
+  highestKillStreak: 0,
+  potionsUsed: 0,
+  weaponUpgrades: 0,
+  totalDamageTaken: 0,
+  troopsHired: 0,
+};
+
+// Boss intro card
+let bossIntroTimer = 0;
+let bossIntroData = null;
+
 function init() {
   const canvas = initRenderer();
   initInput(canvas);
   requestAnimationFrame(gameLoop);
 }
 
-function resetGame() {
+function resetGame(elite = false) {
+  eliteMode = elite;
   player = createPlayer();
   recalcStats(player);
   walls = createBarricades(0, player.barricadeHPMult);
   waveManager = createWaveManager();
+  waveManager.eliteMode = elite;
   economy = createEconomy();
   camera = createCamera();
   camera.x = 900 - VIEW_W / 2;
@@ -101,6 +121,17 @@ function resetGame() {
   killStreakShowTimer = 0;
   levelUpTextTimer = 0;
   prevKills = 0;
+  bossIntroTimer = 0;
+  bossIntroData = null;
+  runStats = {
+    goldEarned: 0,
+    buildingsBought: 0,
+    highestKillStreak: 0,
+    potionsUsed: 0,
+    weaponUpgrades: 0,
+    totalDamageTaken: 0,
+    troopsHired: 0,
+  };
   resetParticles();
   resetHUDState();
 }
@@ -150,11 +181,21 @@ function gameLoop(timestamp) {
 
 // --- Menu ---
 function updateMenu(mouseClicked, mouse) {
-  const playBtn = drawMainMenu(highScore);
+  const { playBtn, eliteBtn } = drawMainMenu(highScore, eliteUnlocked, eliteHighScore);
   if (mouseClicked && pointInRect(mouse.x, mouse.y, playBtn)) {
     ensureContext();
     startFade(1, 3, () => {
-      resetGame();
+      resetGame(false);
+      state = 'playing';
+      startWave();
+      startMusic(false);
+      startFade(0, 3);
+    });
+  }
+  if (eliteBtn && mouseClicked && pointInRect(mouse.x, mouse.y, eliteBtn)) {
+    ensureContext();
+    startFade(1, 3, () => {
+      resetGame(true);
       state = 'playing';
       startWave();
       startMusic(false);
@@ -177,8 +218,16 @@ function startWave() {
     playBossSpawn();
     spawnBossFlash();
     setBossIntensity(true);
+
+    // Boss intro card: pick named boss based on wave
+    const bossIndex = Math.floor((waveManager.wave - 1) / 10) % (ENEMIES.titan.bosses ? ENEMIES.titan.bosses.length : 1);
+    const bosses = ENEMIES.titan.bosses || [];
+    bossIntroData = bosses[bossIndex] || { name: 'The Titan', lore: 'A fearsome warrior.' };
+    bossIntroTimer = 4.0;
   } else {
     setBossIntensity(false);
+    bossIntroData = null;
+    bossIntroTimer = 0;
   }
 
   // Wave 2 tutorial: blocking hint
@@ -204,6 +253,13 @@ function updatePlaying(dt, mouseClicked, mouse) {
   // Pause check
   if (isPause()) { stopMusic(); state = 'paused'; return; }
 
+  // Boss intro card freeze: skip updates but still draw
+  if (bossIntroTimer > 0) {
+    bossIntroTimer -= dt;
+    drawGameScene(0);
+    return;
+  }
+
   // Hit stop: freeze all game updates briefly on killing blows
   if (player.hitStopTimer > 0) { player.hitStopTimer -= dt; drawGameScene(0); return; }
 
@@ -211,9 +267,39 @@ function updatePlaying(dt, mouseClicked, mouse) {
   waveAnnouncementTimer -= dt;
   if (wave2TutorialTimer > 0) wave2TutorialTimer -= dt;
 
+  // Horde event: trigger once per wave when horde pending and first enemy spawned
+  if (waveManager.hordeEventPending && !waveManager.hordeEventFired && enemies.length > 0) {
+    waveManager.hordeEventFired = true;
+    waveManager.hordeEventPending = false;
+    showHordeBanner();
+    playHordeDrum();
+  }
+
+  // Active skills (Q = War Cry, R = Shield Bash)
+  if (isSkillQ() && player.activeSkills && player.activeSkills.includes('warCry')) {
+    const cd = player.skillCooldowns && player.skillCooldowns['warCry'] || 0;
+    if (cd <= 0) {
+      activateWarCry(player, enemies, floatingTexts);
+      playWarCryHorn();
+    }
+  }
+  if (isSkillR() && player.activeSkills && player.activeSkills.includes('shieldBash')) {
+    const cd = player.skillCooldowns && player.skillCooldowns['shieldBash'] || 0;
+    if (cd <= 0) {
+      activateShieldBash(player, enemies);
+    }
+  }
+
   // Wave complete celebration overlay
   if (waveCompleteShown && waveCompleteTimer > 0) {
     waveCompleteTimer -= dt;
+
+    // Sync run stats at wave end
+    runStats.buildingsBought = economy.buildingsBought || 0;
+    runStats.troopsHired = economy.troopsHired || 0;
+    runStats.potionsUsed = player.potionsUsed || 0;
+    runStats.weaponUpgrades = player.weaponUpgrades || 0;
+    runStats.totalDamageTaken = player.totalDamageTaken || 0;
 
     // Draw frozen game scene
     drawGameScene(dt);
@@ -250,6 +336,11 @@ function updatePlaying(dt, mouseClicked, mouse) {
     if (waveCompleteTimer <= 0) {
       // Transition to shop or victory
       if (waveManager.allWavesComplete) {
+        // Unlock elite mode on wave 50 victory
+        if (!eliteUnlocked) {
+          eliteUnlocked = true;
+          localStorage.setItem('koa_elite_unlocked', 'true');
+        }
         saveHighScore();
         stopMusic();
         state = 'victory';
@@ -265,6 +356,9 @@ function updatePlaying(dt, mouseClicked, mouse) {
     }
     return;
   }
+
+  // Update horde banner
+  updateHordeBanner(dt);
 
   // Update camera
   updateCamera(camera, player.x + player.width / 2, player.y + player.height / 2, dt);
@@ -293,6 +387,7 @@ function updatePlaying(dt, mouseClicked, mouse) {
     const d = dist(player.x + player.width / 2, player.y + player.height / 2, g.x + 6, g.y + 6);
     if (d < pickupRadius) {
       economy.gold += g.amount;
+      runStats.goldEarned += g.amount;
       floatingTexts.push(createFloatingText(g.x, g.y - 10, '+' + g.amount, '#ffdd44'));
       spawnGoldSparkle(g.x + 6, g.y + 6);
       playGoldPickup();
@@ -386,6 +481,7 @@ function updatePlaying(dt, mouseClicked, mouse) {
     const newKills = player.kills - prevKills;
     killStreakCount += newKills;
     killStreakTimer = 3.0;
+    if (killStreakCount > runStats.highestKillStreak) runStats.highestKillStreak = killStreakCount;
     if (killStreakCount >= 20) { killStreakText = 'UNSTOPPABLE!'; killStreakShowTimer = 2.0; }
     else if (killStreakCount >= 10) { killStreakText = 'RAMPAGE!'; killStreakShowTimer = 2.0; }
     else if (killStreakCount >= 5) { killStreakText = 'KILLING SPREE!'; killStreakShowTimer = 2.0; }
@@ -433,6 +529,12 @@ function updatePlaying(dt, mouseClicked, mouse) {
 
   // Check game over
   if (player.hp <= 0) {
+    // Sync run stats
+    runStats.buildingsBought = economy.buildingsBought || 0;
+    runStats.troopsHired = economy.troopsHired || 0;
+    runStats.potionsUsed = player.potionsUsed || 0;
+    runStats.weaponUpgrades = player.weaponUpgrades || 0;
+    runStats.totalDamageTaken = player.totalDamageTaken || 0;
     saveHighScore();
     stopMusic();
     state = 'gameOver';
@@ -444,6 +546,7 @@ function updatePlaying(dt, mouseClicked, mouse) {
     // Wave completion bonus (passive building effects apply)
     const baseBonus = getWaveBonus(waveManager.wave);
     const { goldBonus, crystals } = applyWaveEndPassives(economy, baseBonus);
+    runStats.goldEarned += goldBonus;
     player.score += 100 + waveManager.wave * 20;
 
     // No damage bonus
@@ -523,6 +626,17 @@ function drawGameScene(dt) {
   // Screen-space particles (ambient motes, boss flash)
   drawScreenParticles(ctx, VIEW_W, VIEW_H);
 
+  // Elite mode red vignette
+  if (eliteMode) {
+    const vigTime = performance.now() / 1000;
+    const vigAlpha = 0.12 + 0.04 * Math.sin(vigTime * 1.5);
+    const vigGrad = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.3, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.8);
+    vigGrad.addColorStop(0, 'rgba(180,0,0,0)');
+    vigGrad.addColorStop(1, `rgba(180,0,0,${vigAlpha})`);
+    ctx.fillStyle = vigGrad;
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  }
+
   // HUD (screen space)
   drawHUD(player, waveManager, economy, walls, player.repairingSide);
 
@@ -532,9 +646,17 @@ function drawGameScene(dt) {
   // Minimap (screen space)
   drawMinimap(camera, player, enemies, troops, walls);
 
+  // Horde banner
+  drawHordeBanner();
+
   // Wave announcement
   if (waveAnnouncementTimer > 0) {
-    drawWaveAnnouncement(waveManager.wave, waveAnnouncementTimer);
+    drawWaveAnnouncement(waveManager.wave, waveAnnouncementTimer, eliteMode);
+  }
+
+  // Boss intro card
+  if (bossIntroTimer > 0 && bossIntroData) {
+    drawBossIntroCard(bossIntroData, bossIntroTimer);
   }
 
   // Tutorial
@@ -575,7 +697,6 @@ function drawGameScene(dt) {
   // Level up text
   if (levelUpTextTimer > 0) {
     const alpha = Math.min(1, levelUpTextTimer);
-    const scale = 1 + (1.5 - levelUpTextTimer) * 0.1; // slight grow
     ctx.globalAlpha = alpha;
     ctx.font = '24px "Press Start 2P", monospace';
     ctx.textAlign = 'center';
@@ -650,9 +771,16 @@ function updateShopState(dt, mouseClicked, mouse) {
 
 // --- High Score Helper ---
 function saveHighScore() {
-  if (player.score > highScore) {
-    highScore = player.score;
-    localStorage.setItem('koa_highscore', String(highScore));
+  if (eliteMode) {
+    if (waveManager.wave > eliteHighScore) {
+      eliteHighScore = waveManager.wave;
+      localStorage.setItem('koa_elite_highscore', String(eliteHighScore));
+    }
+  } else {
+    if (player.score > highScore) {
+      highScore = player.score;
+      localStorage.setItem('koa_highscore', String(highScore));
+    }
   }
 }
 
@@ -667,14 +795,21 @@ function updateGameOver(mouseClicked, mouse) {
   drawPlayer(player);
   resetCameraTransform(ctx);
 
-  const retryBtn = drawGameOver(player, waveManager.wave, elapsedTime, highScore);
+  const { retryBtn, menuBtn } = drawGameOver(player, waveManager.wave, elapsedTime, eliteMode ? eliteHighScore : highScore, runStats, eliteMode);
   if (mouseClicked && pointInRect(mouse.x, mouse.y, retryBtn)) {
     ensureContext();
     startFade(1, 3, () => {
-      resetGame();
+      resetGame(eliteMode);
       state = 'playing';
       startWave();
       startMusic(false);
+      startFade(0, 3);
+    });
+  }
+  if (menuBtn && mouseClicked && pointInRect(mouse.x, mouse.y, menuBtn)) {
+    ensureContext();
+    startFade(1, 3, () => {
+      state = 'menu';
       startFade(0, 3);
     });
   }
@@ -682,14 +817,21 @@ function updateGameOver(mouseClicked, mouse) {
 
 // --- Victory ---
 function updateVictoryState(mouseClicked, mouse) {
-  const playBtn = drawVictory(player, elapsedTime, highScore);
+  const { playBtn, menuBtn } = drawVictory(player, elapsedTime, eliteMode ? eliteHighScore : highScore, runStats, eliteMode);
   if (mouseClicked && pointInRect(mouse.x, mouse.y, playBtn)) {
     ensureContext();
     startFade(1, 3, () => {
-      resetGame();
+      resetGame(eliteMode);
       state = 'playing';
       startWave();
       startMusic(false);
+      startFade(0, 3);
+    });
+  }
+  if (menuBtn && mouseClicked && pointInRect(mouse.x, mouse.y, menuBtn)) {
+    ensureContext();
+    startFade(1, 3, () => {
+      state = 'menu';
       startFade(0, 3);
     });
   }

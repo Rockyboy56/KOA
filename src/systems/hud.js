@@ -1,4 +1,4 @@
-import { VIEW_W, VIEW_H } from '../config.js';
+import { VIEW_W, VIEW_H, WAVE_FLAVOUR, ACTIVE_SKILLS } from '../config.js';
 import { lerp } from '../utils/math.js';
 import { drawBar, drawText, drawTextCentered, drawRect, getCtx } from '../renderer.js';
 import { isMuted } from './audio.js';
@@ -16,8 +16,8 @@ let bannerWave = 0;
 let bannerPhase = 'idle';  // 'slideIn' | 'hold' | 'slideOut' | 'idle'
 let bannerTimer = 0;
 
-const BANNER_W = 300;
-const BANNER_H = 50;
+const BANNER_W = 340;
+const BANNER_H = 66;
 const BANNER_SLIDE_IN = 0.3;
 const BANNER_HOLD = 1.5;
 const BANNER_SLIDE_OUT = 0.3;
@@ -335,8 +335,9 @@ export function drawHUD(player, waveManager, economy, walls, repairingSide) {
   ctx.restore();
 
   // Key hints in parchment gold tone
+  const totalPotions = (player.potions?.minorHeal || 0) + (player.potions?.stoneskin || 0);
   const hints = [
-    ['[1] Potion x' + player.potions, 10],
+    ['[1] Potion x' + totalPotions, 10],
     ['[F] Repair', 200],
     ['[G] Regroup', 360],
     ['[RMB] Block', 530],
@@ -362,6 +363,73 @@ export function drawHUD(player, waveManager, economy, walls, repairingSide) {
     ctx.fillText('[M] Sound', VIEW_W - 99, VIEW_H - 21);
     ctx.fillStyle = '#887755';
     ctx.fillText('[M] Sound', VIEW_W - 100, VIEW_H - 22);
+  }
+
+  // ─── Active Skill Icons ───
+  if (player.activeSkills && player.activeSkills.length > 0) {
+    const skillSlots = [player.activeSkills[0], player.activeSkills[1]];
+    const slotLabels = ['[Q]', '[R]'];
+    const slotX = VIEW_W / 2 - 55;
+    const slotY = VIEW_H - 65;
+    const slotSize = 40;
+
+    for (let i = 0; i < 2; i++) {
+      const key = skillSlots[i];
+      const bx = slotX + i * (slotSize + 10);
+      const by = slotY;
+
+      // Slot background
+      ctx.fillStyle = 'rgba(30,20,10,0.75)';
+      roundRect(ctx, bx, by, slotSize, slotSize, 5);
+      ctx.fill();
+      ctx.strokeStyle = key ? '#a08040' : '#554433';
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, bx, by, slotSize, slotSize, 5);
+      ctx.stroke();
+
+      if (key) {
+        const def = ACTIVE_SKILLS[key];
+        const cd = player.skillCooldowns[key] || 0;
+        const maxCd = def ? def.cooldown : 1;
+        const cdPct = cd > 0 ? cd / maxCd : 0;
+
+        // Icon text (first letter of skill)
+        ctx.font = '12px "Press Start 2P", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = cdPct > 0 ? '#666' : '#ffdd44';
+        ctx.fillText(key === 'warCry' ? 'W' : 'S', bx + slotSize / 2, by + slotSize / 2 - 4);
+
+        // Cooldown pie timer overlay
+        if (cdPct > 0) {
+          ctx.save();
+          ctx.globalAlpha = 0.55;
+          ctx.fillStyle = '#000';
+          ctx.beginPath();
+          ctx.moveTo(bx + slotSize / 2, by + slotSize / 2);
+          const startAngle = -Math.PI / 2;
+          const endAngle = startAngle + Math.PI * 2 * cdPct;
+          ctx.arc(bx + slotSize / 2, by + slotSize / 2, slotSize / 2, startAngle, endAngle);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          // CD time remaining
+          ctx.font = '7px "Press Start 2P", monospace';
+          ctx.fillStyle = '#aaa';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(Math.ceil(cd) + 's', bx + slotSize / 2, by + slotSize - 8);
+        }
+      }
+
+      // Key label below
+      ctx.font = '7px "Press Start 2P", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = '#887755';
+      ctx.fillText(slotLabels[i], bx + slotSize / 2, by + slotSize + 2);
+    }
   }
 
   // ─── Wall status panel ───
@@ -461,7 +529,7 @@ export function drawHUD(player, waveManager, economy, walls, repairingSide) {
 
 // ─── Wave Announcement Banner ───────────────────────────────────
 
-export function drawWaveAnnouncement(wave, timer) {
+export function drawWaveAnnouncement(wave, timer, isElite = false) {
   if (timer <= 0) return;
   const ctx = getCtx();
 
@@ -532,15 +600,46 @@ export function drawWaveAnnouncement(wave, timer) {
   ctx.stroke();
 
   // Text centered
+  const waveLabel = isElite ? `ELITE WAVE ${wave}` : `WAVE ${wave}`;
   ctx.font = '14px "Press Start 2P", monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   // Golden drop shadow
   ctx.fillStyle = 'rgba(160,128,64,0.4)';
-  ctx.fillText(`WAVE ${wave}`, VIEW_W / 2 + 1, bannerY + BANNER_H / 2 + 2);
+  ctx.fillText(waveLabel, VIEW_W / 2 + 1, bannerY + BANNER_H / 2 - 7);
   // Main text: dark brown
   ctx.fillStyle = '#3a2a1a';
-  ctx.fillText(`WAVE ${wave}`, VIEW_W / 2, bannerY + BANNER_H / 2);
+  ctx.fillText(waveLabel, VIEW_W / 2, bannerY + BANNER_H / 2 - 8);
+
+  // Flavour text below wave number
+  const flavour = WAVE_FLAVOUR[wave];
+  if (flavour) {
+    const fa = bannerPhase === 'hold'
+      ? Math.min(1, (BANNER_HOLD - bannerTimer) * 3 + 0.3)
+      : (bannerPhase === 'slideOut' ? bannerTimer / BANNER_SLIDE_OUT : 0);
+    ctx.globalAlpha = Math.max(0, Math.min(1, fa));
+    ctx.font = '6px "Press Start 2P", monospace';
+    ctx.fillStyle = '#5a3a1a';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Wrap if too long (simple truncate)
+    const maxW = BANNER_W - 20;
+    const measured = ctx.measureText(flavour).width;
+    if (measured > maxW) {
+      const words = flavour.split(' ');
+      let line1 = '', line2 = '';
+      for (const w of words) {
+        if (ctx.measureText(line1 + w + ' ').width < maxW) line1 += w + ' ';
+        else line2 += w + ' ';
+      }
+      ctx.fillText(line1.trim(), VIEW_W / 2, bannerY + BANNER_H / 2 + 8);
+      ctx.fillText(line2.trim(), VIEW_W / 2, bannerY + BANNER_H / 2 + 18);
+    } else {
+      ctx.fillText(flavour, VIEW_W / 2, bannerY + BANNER_H / 2 + 12);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   ctx.restore();
 }
 
@@ -696,6 +795,149 @@ export function drawDamageNumbers(texts) {
   ctx.globalAlpha = 1;
 }
 
+// ─── Horde Banner ───────────────────────────────────────────────
+let hordeBannerTimer = 0;
+
+export function showHordeBanner() {
+  hordeBannerTimer = 1.5;
+}
+
+export function updateHordeBanner(dt) {
+  if (hordeBannerTimer > 0) hordeBannerTimer -= dt;
+}
+
+export function drawHordeBanner() {
+  if (hordeBannerTimer <= 0) return;
+  const ctx = getCtx();
+  const alpha = Math.min(1, hordeBannerTimer * 2);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  const bw = 360, bh = 44;
+  const bx = VIEW_W / 2 - bw / 2;
+  const by = 80;
+
+  ctx.fillStyle = 'rgba(180,0,0,0.85)';
+  roundRect(ctx, bx, by, bw, bh, 6);
+  ctx.fill();
+  ctx.strokeStyle = '#ff4444';
+  ctx.lineWidth = 2;
+  roundRect(ctx, bx, by, bw, bh, 6);
+  ctx.stroke();
+
+  ctx.font = '14px "Press Start 2P", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#000';
+  ctx.fillText('HORDE INCOMING!', VIEW_W / 2 + 1, by + bh / 2 + 1);
+  ctx.fillStyle = '#ffcccc';
+  ctx.fillText('HORDE INCOMING!', VIEW_W / 2, by + bh / 2);
+
+  ctx.restore();
+}
+
+// ─── Boss Intro Card ─────────────────────────────────────────────
+
+export function drawBossIntroCard(bossData, timer) {
+  if (!bossData || timer <= 0) return;
+  const ctx = getCtx();
+  const totalTime = 2.0;
+  const slideProgress = Math.min(1, (totalTime - timer) / 0.3);
+  const slideEased = 1 - Math.pow(1 - slideProgress, 3);
+
+  const cardW = 400, cardH = 180;
+  const cardX = VIEW_W / 2 - cardW / 2;
+  const startY = VIEW_H;
+  const endY = VIEW_H - (VIEW_H * 0.2 + cardH);
+  const cardY = startY + (endY - startY) * slideEased;
+
+  // Dark vignette overlay
+  ctx.save();
+  ctx.globalAlpha = Math.min(0.7, (totalTime - timer) * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  ctx.restore();
+
+  // Card shadow
+  ctx.save();
+  ctx.globalAlpha = 0.4;
+  ctx.fillStyle = '#000';
+  roundRect(ctx, cardX + 6, cardY + 6, cardW, cardH, 10);
+  ctx.fill();
+  ctx.restore();
+
+  // Card body
+  ctx.save();
+  const cardGrad = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardH);
+  cardGrad.addColorStop(0, '#2a1a0a');
+  cardGrad.addColorStop(1, '#1a0a00');
+  ctx.fillStyle = cardGrad;
+  roundRect(ctx, cardX, cardY, cardW, cardH, 10);
+  ctx.fill();
+  ctx.strokeStyle = '#cc2222';
+  ctx.lineWidth = 2.5;
+  roundRect(ctx, cardX, cardY, cardW, cardH, 10);
+  ctx.stroke();
+  ctx.restore();
+
+  // Skull icon
+  ctx.save();
+  const skullX = cardX + 50;
+  const skullY = cardY + cardH / 2;
+  ctx.fillStyle = '#cc2222';
+  ctx.beginPath();
+  ctx.arc(skullX, skullY - 5, 22, Math.PI, 0);
+  ctx.fillRect(skullX - 15, skullY - 5, 30, 18);
+  ctx.fill();
+  ctx.fillStyle = '#1a0a00';
+  ctx.beginPath();
+  ctx.arc(skullX - 8, skullY - 5, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(skullX + 8, skullY - 5, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#cc2222';
+  for (let t = 0; t < 5; t++) {
+    ctx.fillRect(skullX - 15 + t * 6, skullY + 8, 4, 8);
+  }
+  ctx.restore();
+
+  // Boss name
+  ctx.save();
+  ctx.font = '18px "Press Start 2P", monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#ff4444';
+  ctx.fillText(bossData.name, cardX + 90, cardY + 28);
+  ctx.restore();
+
+  // Lore text
+  ctx.save();
+  ctx.font = 'italic 9px "Press Start 2P", monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#ccbbaa';
+  ctx.fillText(bossData.lore, cardX + 90, cardY + 58);
+  ctx.restore();
+
+  // HP bar
+  ctx.save();
+  ctx.font = '7px "Press Start 2P", monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#cc2222';
+  ctx.fillText('TITAN', cardX + 90, cardY + 90);
+  ctx.fillStyle = '#220000';
+  roundRect(ctx, cardX + 90, cardY + 104, cardW - 110, 18, 4);
+  ctx.fill();
+  ctx.fillStyle = '#cc2222';
+  ctx.fillRect(cardX + 90, cardY + 104, cardW - 110, 18);
+  ctx.strokeStyle = '#ff4444';
+  ctx.lineWidth = 1;
+  roundRect(ctx, cardX + 90, cardY + 104, cardW - 110, 18, 4);
+  ctx.stroke();
+  ctx.restore();
+}
+
 // ─── Reset HUD State ────────────────────────────────────────────
 
 export function resetHUDState() {
@@ -708,4 +950,5 @@ export function resetHUDState() {
   bannerWave = 0;
   bannerPhase = 'idle';
   bannerTimer = 0;
+  hordeBannerTimer = 0;
 }

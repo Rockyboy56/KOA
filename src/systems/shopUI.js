@@ -1,4 +1,4 @@
-import { GAME_WIDTH, GAME_HEIGHT, BUILDINGS, WEAPON_CLASSES, SPECIAL_WEAPONS, ARMORS, SHIELDS, TROOPS, POTIONS, SKILLS } from '../config.js';
+import { GAME_WIDTH, GAME_HEIGHT, BUILDINGS, WEAPON_CLASSES, SPECIAL_WEAPONS, ARMORS, SHIELDS, TROOPS, POTIONS, ACTIVE_SKILLS, SKILLS } from '../config.js';
 import { drawRect, drawText, drawBar, drawTextCentered, getCtx } from '../renderer.js';
 import { pointInRect } from '../utils/collision.js';
 import { getMouse, getWheelDelta } from '../input.js';
@@ -15,12 +15,13 @@ function _triggerEquipFlash(player) {
   for (let i = 0; i < 6; i++) spawnGoldSparkle(px, py);
 }
 
-const TABS = ['BUILDINGS', 'EQUIPMENT', 'TROOPS', 'SKILLS'];
+const TABS = ['BUILDINGS', 'EQUIPMENT', 'TROOPS', 'SKILLS', 'CONSUMABLES'];
 let currentTab = 0;
 let scrollOffset = 0;
 let buttons = [];
 let headers = [];
 let parchmentCanvas = null;
+let newItemTabs = new Set();
 
 // ─── Helper: rounded rectangle path ─────────────────────────────
 function roundRect(ctx, x, y, w, h, r) {
@@ -192,6 +193,10 @@ export function resetShop() {
   scrollOffset = 0;
   buttons = [];
   headers = [];
+  newItemTabs.add(4); // CONSUMABLES
+  newItemTabs.add(1); // EQUIPMENT
+  newItemTabs.add(2); // TROOPS
+  newItemTabs.add(3); // SKILLS
 }
 
 export function updateShop(player, economy, mouseClicked) {
@@ -206,7 +211,7 @@ export function updateShop(player, economy, mouseClicked) {
   for (let i = 0; i < TABS.length; i++) {
     const bx = 30 + i * 160;
     const by = 60;
-    buttons.push({ x: bx, y: by, width: 140, height: 30, isTab: true, action: () => { currentTab = i; scrollOffset = 0; playShopClick(); } });
+    buttons.push({ x: bx, y: by, width: 140, height: 30, isTab: true, action: () => { currentTab = i; scrollOffset = 0; newItemTabs.delete(i); playShopClick(); } });
   }
 
   const discount = player.costDiscount;
@@ -222,6 +227,8 @@ export function updateShop(player, economy, mouseClicked) {
     buildTroopsTab(player, economy, discount);
   } else if (currentTab === 3) {
     buildSkillsTab(player, economy, discount);
+  } else if (currentTab === 4) {
+    buildConsumablesTab(player, economy, discount);
   }
 
   // Process clicks: tab buttons always, content buttons for non-tech-tree tabs
@@ -300,18 +307,79 @@ function buildEquipmentTab(player, economy, discount, mouseClicked) {
     yOff += 34;
   }
 
-  // ── Consumables ──
+}
+
+function buildConsumablesTab(player, economy, discount) {
+  let yOff = 110 - scrollOffset;
+  headers.push({ text: '-- Potions --', y: yOff - 4 });
+  yOff += 18;
+
+  // Minor Heal Potion (always available)
+  const minorCount = player.potions.minorHeal || 0;
+  const canBuyMinor = Econ.canBuyPotion(economy, 'minorHeal', minorCount, discount);
+  buttons.push({
+    x: 30, y: yOff, width: 500, height: 34,
+    label: `Minor Heal Potion (+25 HP) (${minorCount}/${POTIONS.minorHeal.maxCarry}) - ${Math.round(POTIONS.minorHeal.cost * (1 - discount))}g`,
+    enabled: canBuyMinor,
+    action: () => {
+      if (Econ.canBuyPotion(economy, 'minorHeal', player.potions.minorHeal || 0, discount)) {
+        Econ.buyPotion(economy, 'minorHeal', discount);
+        player.potions.minorHeal = (player.potions.minorHeal || 0) + 1;
+      }
+    },
+  });
+  yOff += 38;
+
+  // Stoneskin Potion (requires wizardTower)
   if (economy.buildings.wizardTower) {
-    yOff += 6;
-    headers.push({ text: '-- Consumables --', y: yOff - 4 });
-    yOff += 18;
-    const canBuyP = Econ.canBuyPotion(economy, player.potions, discount);
+    const stoneskinCount = player.potions.stoneskin || 0;
+    const canBuyStoneskin = Econ.canBuyPotion(economy, 'stoneskin', stoneskinCount, discount);
     buttons.push({
-      x: 30, y: yOff, width: 440, height: 30,
-      label: `Stoneskin Potion (${player.potions}/3) - ${Math.round(POTIONS.stoneskin.cost * (1 - discount))}g`,
-      enabled: canBuyP,
-      action: () => { Econ.buyPotion(economy, discount); player.potions++; },
+      x: 30, y: yOff, width: 500, height: 34,
+      label: `Stoneskin Potion (+75 HP) (${stoneskinCount}/${POTIONS.stoneskin.maxCarry}) - ${Math.round(POTIONS.stoneskin.cost * (1 - discount))}g`,
+      enabled: canBuyStoneskin,
+      action: () => {
+        if (Econ.canBuyPotion(economy, 'stoneskin', player.potions.stoneskin || 0, discount)) {
+          Econ.buyPotion(economy, 'stoneskin', discount);
+          player.potions.stoneskin = (player.potions.stoneskin || 0) + 1;
+        }
+      },
     });
+    yOff += 38;
+  }
+
+  // Active Skills section
+  yOff += 16;
+  headers.push({ text: '-- Active Skills --', y: yOff - 4 });
+  yOff += 18;
+
+  for (const [skillKey, def] of Object.entries(ACTIVE_SKILLS)) {
+    const owned = player.activeSkills && player.activeSkills.includes(skillKey);
+    const canBuy = Econ.canBuyActiveSkill(economy, skillKey, player, discount);
+    const reqName = def.requires ? (BUILDINGS[def.requires]?.name || def.requires) : null;
+
+    let label;
+    if (owned) {
+      label = `> ${def.name} [EQUIPPED] - CD: ${def.cooldown}s`;
+    } else if (reqName && !economy.buildings[def.requires]) {
+      label = `${def.name} (${def.cost}g) [Needs ${reqName}]`;
+    } else if (player.activeSkills && player.activeSkills.length >= 2) {
+      label = `${def.name} [FULL - 2 skill slots used]`;
+    } else {
+      label = `${def.name} - ${Math.round(def.cost * (1 - discount))}g - ${def.description}`;
+    }
+
+    buttons.push({
+      x: 30, y: yOff, width: 500, height: 38,
+      label,
+      enabled: canBuy && !owned,
+      action: () => {
+        if (Econ.canBuyActiveSkill(economy, skillKey, player, discount)) {
+          Econ.buyActiveSkill(economy, skillKey, player, discount);
+        }
+      },
+    });
+    yOff += 42;
   }
 }
 
@@ -496,6 +564,22 @@ export function drawShop(player, economy, waveManager) {
     ctx.fillStyle = isActive ? '#3a2010' : '#6a5a40';
     ctx.fillText(TABS[i], bx + tabW / 2, textY);
     ctx.restore();
+
+    // Gold pulsing dot for tabs with new items
+    if (newItemTabs.has(i)) {
+      const dotTime = performance.now() / 1000;
+      const dotAlpha = 0.7 + 0.3 * Math.sin(dotTime * 4);
+      ctx.save();
+      ctx.globalAlpha = dotAlpha;
+      ctx.beginPath();
+      ctx.arc(bx + tabW - 10, tabY + 8, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffcc00';
+      ctx.fill();
+      ctx.strokeStyle = '#aa8800';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // Content area

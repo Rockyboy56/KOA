@@ -19,22 +19,22 @@ function getWaveComposition(wave) {
   if (wave >= 5) add('soldier', Math.min(8, Math.floor((wave - 3) * 0.7)));
 
   // Bombers from wave 8
-  if (wave >= 8) add('bomber', Math.min(6, Math.floor((wave - 6) * 0.4)));
+  if (wave >= 8) add('bomber', Math.min(6, Math.ceil((wave - 7) * 0.4)));
 
   // Archers from wave 10
   if (wave >= 10) add('archer', Math.min(6, Math.floor((wave - 8) * 0.5)));
 
   // Ogres from wave 15
-  if (wave >= 15) add('ogre', Math.min(6, Math.floor((wave - 13) * 0.4)));
+  if (wave >= 15) add('ogre', Math.min(6, Math.ceil((wave - 14) * 0.4)));
 
   // Orc Knights from wave 20
-  if (wave >= 20) add('orcKnight', Math.min(6, Math.floor((wave - 18) * 0.35)));
+  if (wave >= 20) add('orcKnight', Math.min(6, Math.ceil((wave - 19) * 0.35)));
 
   // Wizards from wave 25
-  if (wave >= 25) add('wizard', Math.min(5, Math.floor((wave - 23) * 0.3)));
+  if (wave >= 25) add('wizard', Math.min(5, Math.ceil((wave - 24) * 0.3)));
 
   // Ogre Soldiers from wave 35
-  if (wave >= 35) add('ogreSoldier', Math.min(4, Math.floor((wave - 33) * 0.25)));
+  if (wave >= 35) add('ogreSoldier', Math.min(4, Math.ceil((wave - 34) * 0.4)));
 
   // Boss at waves 15, 25, 35, 45, 50
   if ((wave >= 15 && wave % 10 === 5) || wave === 50) add('titan', 1);
@@ -83,6 +83,9 @@ export function createWaveManager() {
     betweenWaveTimer: 0,
     allWavesComplete: false,
     spawnSides: ['east'], // computed once per wave
+    hordeEventFired: false,
+    hordeEventPending: false,
+    eliteMode: false,
   };
 }
 
@@ -111,6 +114,10 @@ export function startNextWave(wm) {
   wm.betweenWaves = false;
   wm.spawnSides = getSpawnSides(wm.wave); // fix: compute once per wave
 
+  // Horde event on waves 10, 20, 30, 40
+  wm.hordeEventFired = false;
+  wm.hordeEventPending = (wm.wave % 10 === 0 && wm.wave <= 40);
+
   return [];
 }
 
@@ -124,7 +131,7 @@ export function updateWaveSpawning(wm, dt, enemies, wave) {
     const typeKey = wm.spawnQueue[wm.spawnIndex];
     const side = allowedSides[Math.floor(Math.random() * allowedSides.length)];
     const pos = getSpawnPosition(side);
-    const enemy = createEnemy(typeKey, wm.wave, pos.x, pos.y, side);
+    const enemy = createEnemy(typeKey, wm.wave, pos.x, pos.y, side, wm.eliteMode);
     enemies.push(enemy);
     wm.spawnIndex++;
     wm.enemiesAlive++;
@@ -135,7 +142,7 @@ export function updateWaveSpawning(wm, dt, enemies, wave) {
       const typeKey2 = wm.spawnQueue[wm.spawnIndex];
       const side2 = allowedSides[Math.floor(Math.random() * allowedSides.length)];
       const pos2 = getSpawnPosition(side2);
-      const enemy2 = createEnemy(typeKey2, wm.wave, pos2.x, pos2.y, side2);
+      const enemy2 = createEnemy(typeKey2, wm.wave, pos2.x, pos2.y, side2, wm.eliteMode);
       enemies.push(enemy2);
       wm.spawnIndex++;
       wm.enemiesAlive++;

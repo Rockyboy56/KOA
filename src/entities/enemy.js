@@ -7,10 +7,11 @@ import { getBlockingRects, resolveAxis } from '../utils/wallCollision.js';
 
 let nextId = 0;
 
-export function createEnemy(typeKey, wave, spawnX, spawnY, targetGate) {
+export function createEnemy(typeKey, wave, spawnX, spawnY, targetGate, eliteMode = false) {
   const def = ENEMIES[typeKey];
-  const hpScale = getHPScale(wave);
-  const dmgScale = getDamageScale(wave);
+  const hpScale = getHPScale(wave) * (eliteMode ? 2.0 : 1.0);
+  const dmgScale = getDamageScale(wave) * (eliteMode ? 1.5 : 1.0);
+  const speedMult = eliteMode ? 1.15 : 1.0;
 
   return {
     id: nextId++,
@@ -23,7 +24,7 @@ export function createEnemy(typeKey, wave, spawnX, spawnY, targetGate) {
     hp: Math.round(def.hp * hpScale),
     maxHP: Math.round(def.hp * hpScale),
     damage: Math.round(def.damage * dmgScale),
-    speed: def.speed,
+    speed: def.speed * speedMult,
     attackRate: def.attackRate,
     attackTimer: def.attackRate,
     goldMin: def.goldMin,
