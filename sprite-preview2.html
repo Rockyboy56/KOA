@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>KOA Sprite Preview — True Top-Down</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; display: flex; flex-direction: column; align-items: center; padding: 30px; font-family: Georgia, serif; color: #fff; }
+h1 { color: #ffd700; margin-bottom: 6px; font-size: 22px; }
+p { color: #aaa; margin-bottom: 8px; font-size: 13px; }
+.section { color: #ffd700; font-size: 14px; margin: 20px 0 10px; width: 100%; text-align: center; border-bottom: 1px solid #444; padding-bottom: 6px; }
+.grid { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin-bottom: 10px; }
+.card { background: #2a2a3e; border: 1px solid #444; border-radius: 10px; padding: 16px; text-align: center; }
+.card canvas { display: block; margin: 0 auto 8px; }
+.card label { color: #ccc; font-size: 12px; }
+.note { color: #888; font-size: 12px; font-style: italic; margin: 6px 0 16px; }
+</style>
+</head>
+<body>
+<h1>KOA — True Top-Down Sprite Concepts</h1>
+<p>Camera looks straight down — we see tops of heads, shoulders, weapons held out</p>
+<p class="note">Left column: side-view (current) → Right column: top-down equivalent</p>
+
+<div class="section">PLAYER — KNIGHT</div>
+<div class="grid" id="knight-grid"></div>
+
+<div class="section">ENEMY — ORC RAIDER</div>
+<div class="grid" id="orc-grid"></div>
+
+<div class="section">ENEMY — BOSS TITAN</div>
+<div class="grid" id="boss-grid"></div>
+
+<div class="section">ENVIRONMENT TILE — GROUND</div>
+<div class="grid" id="env-grid"></div>
+
+<script>
+
+function makeCard(gridId, label, drawFn, w, h, animate) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  const canvas = document.createElement('canvas');
+  canvas.width = w || 100;
+  canvas.height = h || 100;
+  const ctx = canvas.getContext('2d');
+
+  if (animate) {
+    function frame() {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.save();
+      ctx.translate(canvas.width/2, canvas.height/2);
+      drawFn(ctx);
+      ctx.restore();
+      requestAnimationFrame(frame);
+    }
+    frame();
+  } else {
+    ctx.save();
+    ctx.translate(canvas.width/2, canvas.height/2);
+    drawFn(ctx);
+    ctx.restore();
+  }
+
+  const lbl = document.createElement('label');
+  lbl.textContent = label;
+  card.appendChild(canvas);
+  card.appendChild(lbl);
+  document.getElementById(gridId).appendChild(card);
+}
+
+// ═══════════════════════════════════════════════
+// KNIGHT — SIDE VIEW (current style)
+// ═══════════════════════════════════════════════
+function drawKnightSide(ctx) {
+  ctx.save();
+  // Cape
+  ctx.fillStyle = '#881111';
+  ctx.beginPath(); ctx.ellipse(-3, 4, 10, 14, 0.2, 0, Math.PI*2); ctx.fill();
+  // Body
+  const bg = ctx.createRadialGradient(-3,-2,2,-3,-2,16);
+  bg.addColorStop(0,'#d8e4f0'); bg.addColorStop(1,'#8090a8');
+  ctx.fillStyle = bg; ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.ellipse(0,0,14,12,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  // Helmet
+  const hg = ctx.createRadialGradient(-2,-10,1,-2,-10,11);
+  hg.addColorStop(0,'#b0bcc8'); hg.addColorStop(1,'#6878a0');
+  ctx.fillStyle=hg;
+  ctx.beginPath(); ctx.ellipse(0,-9,11,9,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle='#222'; ctx.fillRect(-7,-11,14,3); ctx.fillRect(-7,-7,14,2);
+  // Plume
+  ctx.fillStyle='#cc2222'; ctx.strokeStyle='#881111'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(-2,-17); ctx.bezierCurveTo(-8,-28,4,-32,2,-22);
+  ctx.bezierCurveTo(6,-30,10,-26,4,-18); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // Sword
+  const sg = ctx.createLinearGradient(12,-2,40,2);
+  sg.addColorStop(0,'#e8eef8'); sg.addColorStop(1,'#9090a8');
+  ctx.fillStyle=sg; ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(12,-3); ctx.lineTo(40,-1); ctx.lineTo(40,1); ctx.lineTo(12,3); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle='#c8a830'; ctx.fillRect(10,-5,5,10); ctx.strokeRect(10,-5,5,10);
+  // Shield
+  ctx.fillStyle='#1a3a9a'; ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(-14,-10); ctx.quadraticCurveTo(-22,-4,-22,4);
+  ctx.quadraticCurveTo(-22,12,-14,16); ctx.quadraticCurveTo(-10,10,-10,4);
+  ctx.quadraticCurveTo(-10,-4,-14,-10); ctx.fill(); ctx.stroke();
+  ctx.fillStyle='#ffd700'; ctx.fillRect(-18,-2,8,2); ctx.fillRect(-15,-5,2,8);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════
+// KNIGHT — TRUE TOP-DOWN VIEW
+// Camera directly above. See: top of helmet,
+// shoulders, arms out to sides holding sword+shield
+// ═══════════════════════════════════════════════
+function drawKnightTop(ctx) {
+  ctx.save();
+
+  // Drop shadow on ground
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.beginPath(); ctx.ellipse(3, 5, 18, 12, 0, 0, Math.PI*2); ctx.fill();
+
+  // Cape (visible as a teardrop behind the body)
+  ctx.fillStyle = '#991111';
+  ctx.strokeStyle = '#550000'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-6, 4);
+  ctx.bezierCurveTo(-14, 16, 0, 22, 6, 16);
+  ctx.bezierCurveTo(14, 8, 8, 4, 6, 4);
+  ctx.fill(); ctx.stroke();
+
+  // Body/shoulders — top view is a wide oval
+  const bodyGrad = ctx.createRadialGradient(-2, -2, 2, -2, -2, 18);
+  bodyGrad.addColorStop(0, '#c8d8e8');
+  bodyGrad.addColorStop(0.6, '#8090a8');
+  bodyGrad.addColorStop(1, '#4a5a6a');
+  ctx.fillStyle = bodyGrad;
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 16, 13, 0, 0, Math.PI*2);
+  ctx.fill(); ctx.stroke();
+
+  // Helmet top — circular, centered on body, slightly raised (lighter)
+  const helmGrad = ctx.createRadialGradient(-3, -3, 1, 0, 0, 12);
+  helmGrad.addColorStop(0, '#ddeeff');
+  helmGrad.addColorStop(0.5, '#9aabbd');
+  helmGrad.addColorStop(1, '#5a6a7a');
+  ctx.fillStyle = helmGrad;
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, -1, 11, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+  // Helmet rim highlight
+  ctx.strokeStyle = 'rgba(220,240,255,0.6)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(-2, -3, 7, Math.PI*1.1, Math.PI*1.8); ctx.stroke();
+
+  // Red plume — top view = elongated teardrop going backward (up on canvas)
+  ctx.fillStyle = '#cc2222';
+  ctx.strokeStyle = '#881111'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-3, -10);
+  ctx.bezierCurveTo(-6, -20, 6, -24, 4, -12);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  // LEFT ARM — shield arm (left side)
+  // Arm: short oval
+  ctx.fillStyle = '#8090a8';
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(-20, 2, 5, 3, -0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  // Shield face-on (top-down = we see the face of the shield)
+  ctx.fillStyle = '#1a3a9a';
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-28, -7);
+  ctx.lineTo(-34, -7);
+  ctx.lineTo(-36, 2);
+  ctx.lineTo(-34, 11);
+  ctx.lineTo(-28, 13);
+  ctx.lineTo(-26, 2);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  // Shield emblem
+  ctx.fillStyle = '#ffd700'; ctx.lineWidth = 1;
+  ctx.fillRect(-33, 0, 8, 2);
+  ctx.fillRect(-30, -3, 2, 8);
+
+  // RIGHT ARM — sword arm (right side, pointing forward/up)
+  ctx.fillStyle = '#8090a8';
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(20, 2, 5, 3, 0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  // Sword — top down, pointing forward (upward on canvas = facing direction)
+  const sGrad = ctx.createLinearGradient(16, -30, 22, 10);
+  sGrad.addColorStop(0, '#e8eef8');
+  sGrad.addColorStop(1, '#7080a0');
+  ctx.fillStyle = sGrad;
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(17, 8);
+  ctx.lineTo(19, -30);
+  ctx.lineTo(21, -30);
+  ctx.lineTo(23, 8);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  // Guard (crosspiece, perpendicular to blade)
+  ctx.fillStyle = '#c8a830';
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
+  ctx.fillRect(14, 4, 12, 5); ctx.strokeRect(14, 4, 12, 5);
+
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════
+// ORC — SIDE VIEW
+// ═══════════════════════════════════════════════
+function drawOrcSide(ctx) {
+  ctx.save();
+  const bg = ctx.createRadialGradient(-3,-3,2,-3,-3,16);
+  bg.addColorStop(0,'#66ee66'); bg.addColorStop(1,'#228822');
+  ctx.fillStyle=bg; ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.ellipse(0,0,13,13,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(-8,-5); ctx.lineTo(-3,-2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8,-5); ctx.lineTo(3,-2); ctx.stroke();
+  ctx.fillStyle='#ff2222';
+  ctx.beginPath(); ctx.arc(-5,-1,3,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(5,-1,3,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#111';
+  ctx.beginPath(); ctx.arc(-5,-1,1.5,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(5,-1,1.5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#fffde0'; ctx.strokeStyle='#aaa890'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(-5,5); ctx.quadraticCurveTo(-7,10,-5,13); ctx.quadraticCurveTo(-3,10,-3,5); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(3,5); ctx.quadraticCurveTo(5,10,7,13); ctx.quadraticCurveTo(7,10,5,5); ctx.fill(); ctx.stroke();
+  ctx.fillStyle='#8B4513'; ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=1.5;
+  ctx.fillRect(12,-2,5,18); ctx.strokeRect(12,-2,5,18);
+  ctx.fillStyle='#5a2a08'; ctx.fillRect(10,12,9,8); ctx.strokeRect(10,12,9,8);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════
+// ORC — TRUE TOP-DOWN
+// See: top of head (green dome), small ears,
+// thick neck, wide shoulders, club held to side
+// ═══════════════════════════════════════════════
+function drawOrcTop(ctx) {
+  ctx.save();
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.ellipse(2, 6, 16, 10, 0, 0, Math.PI*2); ctx.fill();
+
+  // Body (top view — wide squat shape)
+  const bodyGrad = ctx.createRadialGradient(-2, 2, 2, -2, 2, 18);
+  bodyGrad.addColorStop(0, '#55dd55');
+  bodyGrad.addColorStop(0.6, '#338833');
+  bodyGrad.addColorStop(1, '#1a4a1a');
+  ctx.fillStyle = bodyGrad;
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.ellipse(0, 4, 14, 11, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+  // Head — top of skull (round green dome seen from above)
+  const headGrad = ctx.createRadialGradient(-3, -5, 1, 0, -2, 13);
+  headGrad.addColorStop(0, '#88ff88');
+  headGrad.addColorStop(0.5, '#44bb44');
+  headGrad.addColorStop(1, '#1a5a1a');
+  ctx.fillStyle = headGrad;
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, -2, 12, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+  // Ears (small bumps on sides of head)
+  ctx.fillStyle = '#44aa44';
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(-12, -2, 4, 3, 0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(12, -2, 4, 3, -0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+  // Tusks — top-down = see tips poking out from lower jaw area
+  ctx.fillStyle = '#fffde0';
+  ctx.strokeStyle = '#888866'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.ellipse(-4, 9, 2.5, 4, -0.2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(4, 9, 2.5, 4, 0.2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+  // Leather armor strap (visible across top of shoulders)
+  ctx.strokeStyle = '#5a3010'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-10, 6); ctx.lineTo(10, 6); ctx.stroke();
+
+  // Club arm — extended to the right
+  // Arm
+  ctx.fillStyle = '#338833';
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(20, 8, 5, 3, 0.2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  // Club — top view = oval stick with wider head
+  ctx.fillStyle = '#8B4513';
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(31, 5, 4, 2, 0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke(); // handle
+  ctx.fillStyle = '#5a2a08';
+  ctx.beginPath(); ctx.ellipse(38, 2, 7, 5, 0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke(); // head
+
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════
+// BOSS — TOP-DOWN
+// ═══════════════════════════════════════════════
+function drawBossTop(ctx) {
+  ctx.save();
+
+  // Glow
+  const glowGrad = ctx.createRadialGradient(0,0,10,0,0,38);
+  glowGrad.addColorStop(0,'rgba(255,50,50,0.25)');
+  glowGrad.addColorStop(1,'rgba(255,50,50,0)');
+  ctx.fillStyle = glowGrad;
+  ctx.beginPath(); ctx.arc(0,0,38,0,Math.PI*2); ctx.fill();
+
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(4,8,28,18,0,0,Math.PI*2); ctx.fill();
+
+  // Body (massive)
+  const bodyGrad = ctx.createRadialGradient(-4,4,4,-4,4,28);
+  bodyGrad.addColorStop(0,'#2a8a2a'); bodyGrad.addColorStop(1,'#0a3a0a');
+  ctx.fillStyle=bodyGrad; ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.ellipse(0,4,22,18,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+
+  // Head — big dome
+  const headGrad = ctx.createRadialGradient(-4,-4,2,-2,-2,20);
+  headGrad.addColorStop(0,'#3aaa3a'); headGrad.addColorStop(1,'#0a4a0a');
+  ctx.fillStyle=headGrad; ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(0,-4,19,0,Math.PI*2); ctx.fill(); ctx.stroke();
+
+  // Crown — top view = ring of spikes around head
+  ctx.fillStyle='#ffd700'; ctx.strokeStyle='#aa8800'; ctx.lineWidth=1.5;
+  for(let i=0;i<5;i++) {
+    const a = (i/5)*Math.PI*2 - Math.PI/2;
+    const ix = Math.cos(a)*14, iy = Math.sin(a)*14-4;
+    const ox = Math.cos(a)*22, oy = Math.sin(a)*22-4;
+    const la = a-0.25, ra = a+0.25;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(la)*13,Math.sin(la)*13-4);
+    ctx.lineTo(ox, oy);
+    ctx.lineTo(Math.cos(ra)*13,Math.sin(ra)*13-4);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+
+  // Glowing eyes (top-down = two bright dots)
+  const e1 = ctx.createRadialGradient(-7,-6,0,-7,-6,6);
+  e1.addColorStop(0,'#ff6666'); e1.addColorStop(1,'rgba(180,0,0,0)');
+  ctx.fillStyle=e1; ctx.beginPath(); ctx.arc(-7,-6,6,0,Math.PI*2); ctx.fill();
+  const e2 = ctx.createRadialGradient(7,-6,0,7,-6,6);
+  e2.addColorStop(0,'#ff6666'); e2.addColorStop(1,'rgba(180,0,0,0)');
+  ctx.fillStyle=e2; ctx.beginPath(); ctx.arc(7,-6,6,0,Math.PI*2); ctx.fill();
+
+  // Tusks poking out bottom of face
+  ctx.fillStyle='#fffde0'; ctx.strokeStyle='#888866'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.ellipse(-6,14,4,7,-0.2,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(6,14,4,7,0.2,0,Math.PI*2); ctx.fill(); ctx.stroke();
+
+  // Axe — top view (we see the top face of the axe head)
+  // Handle
+  ctx.fillStyle='#6a3510'; ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.ellipse(30,2,4,12,0.3,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  // Axe head (crescent, top view)
+  const axGrad = ctx.createRadialGradient(36,-8,2,36,-8,14);
+  axGrad.addColorStop(0,'#e0e8f0'); axGrad.addColorStop(1,'#6070a0');
+  ctx.fillStyle=axGrad;
+  ctx.beginPath();
+  ctx.moveTo(26,-6);
+  ctx.bezierCurveTo(30,-22,50,-18,46,-6);
+  ctx.bezierCurveTo(44,0,30,2,26,-6);
+  ctx.fill(); ctx.stroke();
+
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════
+// ENVIRONMENT — GROUND TILE
+// ═══════════════════════════════════════════════
+function drawGroundTile(ctx) {
+  ctx.save();
+  ctx.translate(-48,-48);
+  // Sandy courtyard
+  const gGrad = ctx.createLinearGradient(0,0,96,96);
+  gGrad.addColorStop(0,'#c8a870'); gGrad.addColorStop(1,'#a88050');
+  ctx.fillStyle=gGrad; ctx.fillRect(0,0,96,96);
+  // Cobble grid lines
+  ctx.strokeStyle='rgba(80,50,20,0.3)'; ctx.lineWidth=1;
+  for(let x=0;x<96;x+=16) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,96); ctx.stroke(); }
+  for(let y=0;y<96;y+=16) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(96,y); ctx.stroke(); }
+  // Subtle dirt patches
+  ctx.fillStyle='rgba(120,80,30,0.15)';
+  [[20,30,18,10],[55,20,12,8],[70,60,20,12],[30,70,14,9]].forEach(([x,y,rx,ry])=>{
+    ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0.5,0,Math.PI*2); ctx.fill();
+  });
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════
+// BUILD CARDS
+// ═══════════════════════════════════════════════
+
+// Knight
+makeCard('knight-grid', 'Side View (current)', drawKnightSide, 110, 110);
+makeCard('knight-grid', 'Top-Down View ✓', drawKnightTop, 130, 120);
+
+// Orc
+makeCard('orc-grid', 'Side View (current)', drawOrcSide, 100, 100);
+makeCard('orc-grid', 'Top-Down View ✓', drawOrcTop, 120, 100);
+
+// Boss
+makeCard('boss-grid', 'Top-Down View ✓', drawBossTop, 150, 150);
+
+// Env
+makeCard('env-grid', 'Courtyard Ground Tile', drawGroundTile, 120, 120);
+
+</script>
+</body>
+</html>
