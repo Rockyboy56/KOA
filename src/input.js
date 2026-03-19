@@ -4,7 +4,7 @@ let _canvas = null;
 
 // Track single-frame presses
 const justPressed = {};
-let _shopClickHandler = null;
+let wheelDelta = 0;
 
 export function initInput(canvas) {
   _canvas = canvas;
@@ -35,6 +35,7 @@ export function initInput(canvas) {
   });
 
   canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('wheel', e => { wheelDelta += e.deltaY; e.preventDefault(); }, { passive: false });
 }
 
 export function clearFrameInput() {
@@ -56,3 +57,6 @@ export function isAttacking()   { return mouse.leftDown || justPressed['Space'];
 export function isRepair()      { return keys['KeyF']; }
 export function isRegroup()     { return !!justPressed['KeyG']; }
 export function isPotion()      { return !!justPressed['Digit1']; }
+export function isPause()       { return !!justPressed['Escape']; }
+export function isMuteToggle()  { return !!justPressed['KeyM']; }
+export function getWheelDelta() { const d = wheelDelta; wheelDelta = 0; return d; }

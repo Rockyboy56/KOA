@@ -5,6 +5,22 @@ export const GAME_WIDTH = 960;
 export const GAME_HEIGHT = 540;
 export const FPS = 60;
 
+// ─── World / Viewport ───
+export const WORLD_W = 1800;
+export const WORLD_H = 1200;
+export const VIEW_W = 960;
+export const VIEW_H = 540;
+
+// ─── Fort Layout ───
+export const FORT = { x: 400, y: 250, w: 1000, h: 700, wallThickness: 24 };
+
+export const GATES = {
+  north: { x: 840, y: 250, w: 120, h: 24, side: 'top' },
+  south: { x: 840, y: 926, w: 120, h: 24, side: 'bottom' },
+  east:  { x: 1376, y: 540, w: 24, h: 120, side: 'right' },
+  west:  { x: 400, y: 540, w: 24, h: 120, side: 'left' },
+};
+
 // ─── Player ───
 export const PLAYER = {
   maxHP: 100,
@@ -15,10 +31,10 @@ export const PLAYER = {
   radius: 18,               // top-down circular hitbox radius
   width: 36,
   height: 36,
-  startX: 200,
-  startY: 270,
-  verticalMin: 50,
-  verticalMax: 490,
+  startX: 900,
+  startY: 600,
+  verticalMin: 0,
+  verticalMax: 1200,
   goldPickupRadius: 32,
   comboWindow: 600,         // ms to chain next combo hit
   comboCooldown: 300,       // ms after combo 3 before new chain
@@ -33,22 +49,67 @@ export const ATTACK = {
   combo3DmgMult: 1.25,
 };
 
-// ─── Weapons ───
-export const WEAPONS = {
-  shortsword:        { name: 'Shortsword',         damage: 10, cleave: 2, speed: 1.0,  type: '1h', cost: 0,     requires: null,           special: null,                knockbackMult: 1.0 },
-  battleAxe:         { name: 'Battle Axe',          damage: 20, cleave: 3, speed: 0.85, type: '2h', cost: 500,   requires: 'blacksmith',   special: null,                knockbackMult: 1.0 },
-  flail:             { name: 'Flail',               damage: 18, cleave: 2, speed: 0.9,  type: '1h', cost: 400,   requires: 'blacksmith',   special: 'knockback30',       knockbackMult: 1.3 },
-  crossbow:          { name: 'Crossbow',            damage: 15, cleave: 1, speed: 0.7,  type: 'ranged', cost: 600, requires: 'archeryRange', special: null,               knockbackMult: 0 },
-  warHammer:         { name: 'War Hammer',          damage: 28, cleave: 2, speed: 0.7,  type: '2h', cost: 1500,  requires: 'armory',       special: 'knockback50',       knockbackMult: 1.5 },
-  crossbowSpeed:     { name: 'Crossbow of Speed',   damage: 12, cleave: 1, speed: 1.3,  type: 'ranged', cost: 3000, requires: 'wizardTower', special: null,              knockbackMult: 0 },
-  deflectionGladius: { name: 'Deflection Gladius',  damage: 15, cleave: 2, speed: 1.1,  type: '1h', cost: 3500,  requires: 'wizardTower',  special: 'blockBonus20',      knockbackMult: 1.0 },
-  axeRegen:          { name: 'Axe of Regeneration', damage: 22, cleave: 3, speed: 0.85, type: '2h', cost: 5000,  requires: 'wizardTower',  special: 'regen2',            knockbackMult: 1.0 },
-  mithrilMaul:       { name: 'Mithril Maul',        damage: 40, cleave: 3, speed: 0.65, type: '2h', cost: 15000, requires: 'arcaneLibrary', special: null,               knockbackMult: 1.2 },
-  executionerSword:  { name: "Executioner's Sword", damage: 35, cleave: 4, speed: 0.8,  type: '2h', cost: 20000, requires: 'arcaneLibrary', special: null,               knockbackMult: 1.0 },
-  flailThrashing:    { name: 'Flail of Thrashing',  damage: 30, cleave: 3, speed: 1.0,  type: '1h', cost: 25000, requires: 'arcaneLibrary', special: 'knockback30',      knockbackMult: 1.3 },
-  maulTitans:        { name: 'Maul of the Titans',  damage: 55, cleave: 4, speed: 0.6,  type: '2h', cost: 50000, requires: 'arcaneLibrary', special: 'aoeEvery3',        knockbackMult: 1.5 },
-  orcbane:           { name: 'Orcbane',             damage: 70, cleave: 5, speed: 0.75, type: '2h', cost: 80000, requires: 'arcaneLibrary', special: 'blastEvery3',      knockbackMult: 1.0 },
+// ─── Weapon Classes (4 upgrade paths, 5 tiers each) ───
+export const WEAPON_CLASSES = {
+  swords: {
+    name: 'Swords', type: '1h',
+    tiers: [
+      { key: 'shortsword',   name: 'Shortsword',    damage: 10, cleave: 2, speed: 1.0,  cost: 0,     requires: null,            special: null,          knockbackMult: 1.0 },
+      { key: 'longsword',    name: 'Longsword',     damage: 16, cleave: 2, speed: 1.0,  cost: 400,   requires: 'blacksmith',    special: null,          knockbackMult: 1.0 },
+      { key: 'broadsword',   name: 'Broadsword',    damage: 24, cleave: 3, speed: 0.95, cost: 1500,  requires: 'weaponsmith',   special: null,          knockbackMult: 1.0 },
+      { key: 'runicBlade',   name: 'Runic Blade',   damage: 35, cleave: 3, speed: 1.05, cost: 8000,  requires: 'wizardTower',   special: null,          knockbackMult: 1.0 },
+      { key: 'orcbane',      name: 'Orcbane',       damage: 70, cleave: 5, speed: 0.75, cost: 50000, requires: 'arcaneLibrary', special: 'blastEvery3', knockbackMult: 1.0 },
+    ],
+  },
+  axes: {
+    name: 'Axes', type: '2h',
+    tiers: [
+      { key: 'handAxe',        name: 'Hand Axe',        damage: 14, cleave: 3, speed: 0.9,  cost: 250,   requires: 'blacksmith',    special: null,         knockbackMult: 1.0 },
+      { key: 'battleAxe',      name: 'Battle Axe',      damage: 22, cleave: 3, speed: 0.85, cost: 600,   requires: 'blacksmith',    special: null,         knockbackMult: 1.0 },
+      { key: 'executionerAxe', name: 'Executioner Axe',  damage: 32, cleave: 4, speed: 0.8,  cost: 4000,  requires: 'armory',        special: null,         knockbackMult: 1.0 },
+      { key: 'axeRegen',       name: 'Axe of Regen',    damage: 38, cleave: 4, speed: 0.85, cost: 12000, requires: 'wizardTower',   special: 'regen2',     knockbackMult: 1.0 },
+      { key: 'berserkerAxe',   name: 'Berserker Axe',   damage: 55, cleave: 5, speed: 0.9,  cost: 35000, requires: 'masterForge',   special: 'comboStack', knockbackMult: 1.0 },
+    ],
+  },
+  maces: {
+    name: 'Maces', type: '2h',
+    tiers: [
+      { key: 'mace',         name: 'Mace',            damage: 12, cleave: 2, speed: 0.85, cost: 300,   requires: 'blacksmith',    special: null,         knockbackMult: 1.2 },
+      { key: 'flail',        name: 'Flail',           damage: 18, cleave: 2, speed: 0.9,  cost: 800,   requires: 'weaponsmith',   special: null,         knockbackMult: 1.3 },
+      { key: 'warHammer',    name: 'War Hammer',      damage: 28, cleave: 2, speed: 0.7,  cost: 3000,  requires: 'armory',        special: null,         knockbackMult: 1.5 },
+      { key: 'mithrilMaul',  name: 'Mithril Maul',    damage: 40, cleave: 3, speed: 0.65, cost: 15000, requires: 'masterForge',   special: 'stun03',     knockbackMult: 1.5 },
+      { key: 'maulTitans',   name: 'Maul of Titans',  damage: 60, cleave: 4, speed: 0.6,  cost: 45000, requires: 'arcaneLibrary', special: 'aoeEvery3',  knockbackMult: 1.5 },
+    ],
+  },
+  ranged: {
+    name: 'Ranged', type: 'ranged',
+    tiers: [
+      { key: 'lightCrossbow',  name: 'Light Crossbow',   damage: 10, cleave: 1, speed: 0.7,  cost: 300,   requires: 'archeryRange',  special: null,      knockbackMult: 0 },
+      { key: 'crossbow',       name: 'Crossbow',         damage: 15, cleave: 1, speed: 0.8,  cost: 800,   requires: 'archeryRange',  special: null,      knockbackMult: 0 },
+      { key: 'heavyCrossbow',  name: 'Heavy Crossbow',   damage: 22, cleave: 1, speed: 0.65, cost: 2500,  requires: 'armory',        special: 'pierce2', knockbackMult: 0 },
+      { key: 'crossbowSpeed',  name: 'Crossbow of Speed',damage: 18, cleave: 1, speed: 1.3,  cost: 6000,  requires: 'wizardTower',   special: null,      knockbackMult: 0 },
+      { key: 'arcaneRepeater', name: 'Arcane Repeater',  damage: 30, cleave: 1, speed: 1.1,  cost: 25000, requires: 'arcaneLibrary', special: 'pierce3', knockbackMult: 0 },
+    ],
+  },
 };
+
+// Special standalone weapons (not in upgrade paths)
+export const SPECIAL_WEAPONS = {
+  deflectionGladius: { name: 'Deflection Gladius', damage: 15, cleave: 2, speed: 1.1, type: '1h', cost: 3500,  requires: 'wizardTower',   special: 'blockBonus20', knockbackMult: 1.0 },
+  flailThrashing:    { name: 'Flail of Thrashing', damage: 30, cleave: 3, speed: 1.0, type: '1h', cost: 25000, requires: 'arcaneLibrary', special: 'knockback30',  knockbackMult: 1.3 },
+  twinDaggers:       { name: 'Twin Daggers',       damage: 8,  cleave: 1, speed: 1.4, type: '1h', cost: 2000,  requires: 'weaponsmith',   special: 'doubleStrike', knockbackMult: 0.5 },
+};
+
+// ─── Flat WEAPONS lookup (built from classes + specials for backward compat) ───
+export const WEAPONS = {};
+for (const [cls, data] of Object.entries(WEAPON_CLASSES)) {
+  for (const tier of data.tiers) {
+    WEAPONS[tier.key] = { ...tier, type: data.type };
+  }
+}
+for (const [key, def] of Object.entries(SPECIAL_WEAPONS)) {
+  WEAPONS[key] = { ...def };
+}
 
 // ─── Armor ───
 export const ARMORS = {
@@ -77,7 +138,7 @@ export const ENEMIES = {
   orcKnight:   { name: 'Orc Knight',      hp: 80,  damage: 18, speed: 85,  attackRate: 1.0, goldMin: 25,  goldMax: 40,  xp: 25,  firstWave: 20, score: 50,  type: 'melee',   width: 32, height: 40, color: '#456', armorHits: 3 },
   wizard:      { name: 'Orc Wizard',      hp: 35,  damage: 15, speed: 65,  attackRate: 2.5, goldMin: 20,  goldMax: 35,  xp: 20,  firstWave: 25, score: 40,  type: 'ranged',  width: 28, height: 36, color: '#639', range: 250, magic: true },
   ogreSoldier: { name: 'Ogre Soldier',    hp: 180, damage: 35, speed: 55,  attackRate: 2.2, goldMin: 50,  goldMax: 80,  xp: 50,  firstWave: 35, score: 100, type: 'melee',   width: 48, height: 56, color: '#654', knockbackResist: 0.9 },
-  titan:       { name: 'Orc Titan',       hp: 800, damage: 50, speed: 40,  attackRate: 3.0, goldMin: 200, goldMax: 200, xp: 200, firstWave: 10, score: 500, type: 'boss',    width: 64, height: 80, color: '#833', knockbackResist: 1.0 },
+  titan:       { name: 'Orc Titan',       hp: 800, damage: 50, speed: 40,  attackRate: 3.0, goldMin: 200, goldMax: 200, xp: 200, firstWave: 15, score: 500, type: 'boss',    width: 64, height: 80, color: '#833', knockbackResist: 1.0 },
 };
 
 // ─── Barricade ───
@@ -91,18 +152,72 @@ export const BARRICADES = [
 
 // ─── Buildings ───
 export const BUILDINGS = {
-  lumberMill:    { name: 'Lumber Mill',     cost: 100,  requires: null,          unlocks: ['stoneworks', 'archeryRange'] },
-  barracks:      { name: 'Barracks',        cost: 200,  requires: null,          unlocks: ['knightAcademy'] },
-  blacksmith:    { name: 'Blacksmith',      cost: 300,  requires: null,          unlocks: ['armory'] },
-  archeryRange:  { name: 'Archery Range',   cost: 300,  requires: 'lumberMill',  unlocks: [] },
-  stoneworks:    { name: 'Stoneworks',       cost: 500,  requires: 'lumberMill',  unlocks: ['masonry'] },
-  knightAcademy: { name: 'Knight Academy',  cost: 1500, requires: 'barracks',    unlocks: ['advCombat'] },
-  armory:        { name: 'Armory',          cost: 1200, requires: 'blacksmith',  unlocks: [] },
-  masonry:       { name: 'Masonry',         cost: 2000, requires: 'stoneworks',  unlocks: ['forge'] },
-  wizardTower:   { name: 'Wizard Tower',    cost: 2500, requires: null,          unlocks: ['arcaneLibrary'] },
-  advCombat:     { name: 'Adv. Combat',     cost: 4000, requires: 'knightAcademy', unlocks: [] },
-  forge:         { name: 'Forge',           cost: 5000, requires: 'masonry',     unlocks: [] },
-  arcaneLibrary: { name: 'Arcane Library',  cost: 8000, requires: 'wizardTower', unlocks: [] },
+  // Fortification branch (top-left courtyard)
+  lumberMill:          { name: 'Lumber Mill',          cost: 100,  requires: null,                  unlocks: ['stoneworks', 'archeryRange', 'engineeringWorkshop'] },
+  stoneworks:          { name: 'Stoneworks',           cost: 500,  requires: 'lumberMill',          unlocks: ['masonry'] },
+  masonry:             { name: 'Masonry',              cost: 2000, requires: 'stoneworks',          unlocks: ['forge'] },
+  forge:               { name: 'Forge',                cost: 5000, requires: 'masonry',             unlocks: [] },
+  engineeringWorkshop: { name: 'Eng. Workshop',        cost: 800,  requires: 'lumberMill',          unlocks: ['spikedBarricades', 'moat'] },
+  spikedBarricades:    { name: 'Spiked Barricades',    cost: 1000, requires: 'engineeringWorkshop', unlocks: [] },
+  moat:                { name: 'Moat',                 cost: 2500, requires: 'engineeringWorkshop', unlocks: [] },
+
+  // Military branch (top-right courtyard)
+  barracks:            { name: 'Barracks',             cost: 200,  requires: null,                  unlocks: ['knightAcademy'] },
+  archeryRange:        { name: 'Archery Range',        cost: 300,  requires: 'lumberMill',          unlocks: [] },
+  knightAcademy:       { name: 'Knight Academy',       cost: 1500, requires: 'barracks',            unlocks: ['advCombat'] },
+  advCombat:           { name: 'Adv. Combat',          cost: 4000, requires: 'knightAcademy',       unlocks: [] },
+
+  // Crafting branch (bottom-left courtyard)
+  blacksmith:          { name: 'Blacksmith',           cost: 300,  requires: null,                  unlocks: ['armory', 'weaponsmith'] },
+  armory:              { name: 'Armory',               cost: 1200, requires: 'blacksmith',          unlocks: [] },
+  weaponsmith:         { name: 'Weaponsmith',          cost: 1000, requires: 'blacksmith',          unlocks: ['masterForge'] },
+  masterForge:         { name: 'Master Forge',         cost: 6000, requires: 'weaponsmith',         unlocks: [] },
+
+  // Magic branch (bottom-right courtyard)
+  apothecary:          { name: 'Apothecary',           cost: 400,  requires: null,                  unlocks: ['alchemistLab'] },
+  alchemistLab:        { name: 'Alchemist Lab',        cost: 1500, requires: 'apothecary',          unlocks: ['wizardTower'] },
+  wizardTower:         { name: 'Wizard Tower',         cost: 2500, requires: 'alchemistLab',        unlocks: ['arcaneLibrary'] },
+  arcaneLibrary:       { name: 'Arcane Library',       cost: 8000, requires: 'wizardTower',         unlocks: [] },
+
+  // Economy branch (center courtyard)
+  goldMine:            { name: 'Gold Mine',            cost: 600,  requires: null,                  unlocks: ['crystalMine'] },
+  crystalMine:         { name: 'Crystal Mine',         cost: 3000, requires: 'goldMine',            unlocks: ['treasury'] },
+  treasury:            { name: 'Treasury',             cost: 4500, requires: 'crystalMine',         unlocks: [] },
+};
+
+// ─── Building Visual Positions (world coords inside courtyard, from map-mockup) ───
+export const BUILDING_VISUALS = {
+  // Fortification branch - top left
+  lumberMill:          { x: 480, y: 310, w: 50, h: 40, color: '#8B6914' },
+  stoneworks:          { x: 540, y: 310, w: 50, h: 40, color: '#888' },
+  masonry:             { x: 600, y: 310, w: 50, h: 40, color: '#999' },
+  forge:               { x: 660, y: 310, w: 50, h: 40, color: '#c84' },
+  engineeringWorkshop: { x: 480, y: 360, w: 50, h: 40, color: '#a86' },
+  spikedBarricades:    { x: 540, y: 360, w: 50, h: 40, color: '#b55' },
+  moat:                { x: 600, y: 360, w: 50, h: 40, color: '#48a' },
+
+  // Military branch - top right
+  barracks:            { x: 900, y: 310, w: 50, h: 40, color: '#68a' },
+  archeryRange:        { x: 960, y: 310, w: 50, h: 40, color: '#6a6' },
+  knightAcademy:       { x: 1020, y: 310, w: 50, h: 40, color: '#88c' },
+  advCombat:           { x: 1080, y: 310, w: 50, h: 40, color: '#aa8' },
+
+  // Crafting branch - bottom left
+  blacksmith:          { x: 480, y: 820, w: 50, h: 40, color: '#a86' },
+  armory:              { x: 540, y: 820, w: 50, h: 40, color: '#8a8' },
+  weaponsmith:         { x: 600, y: 820, w: 50, h: 40, color: '#ca6' },
+  masterForge:         { x: 660, y: 820, w: 50, h: 40, color: '#e94' },
+
+  // Magic branch - bottom right
+  apothecary:          { x: 900, y: 820, w: 50, h: 40, color: '#6a8' },
+  alchemistLab:        { x: 960, y: 820, w: 50, h: 40, color: '#8ad' },
+  wizardTower:         { x: 1020, y: 820, w: 50, h: 40, color: '#a6d' },
+  arcaneLibrary:       { x: 1080, y: 820, w: 50, h: 40, color: '#c8f' },
+
+  // Economy - center
+  goldMine:            { x: 820, y: 560, w: 55, h: 45, color: '#da4' },
+  crystalMine:         { x: 885, y: 560, w: 55, h: 45, color: '#8df' },
+  treasury:            { x: 950, y: 560, w: 55, h: 45, color: '#fd4' },
 };
 
 // ─── Troops ───
@@ -169,9 +284,10 @@ export const POTIONS = {
 
 // ─── Visual ───
 export const COLORS = {
-  bg:          '#2a4a2a',
+  bg:          '#3a6a2a',
   grass:       '#3a6a2a',
   grassAlt:    '#347024',
+  courtyard:   '#8a7a6a',
   dirt:        '#7a6a4a',
   dirtLight:   '#8a7a5a',
   fort:        '#554433',
@@ -192,13 +308,3 @@ export const COLORS = {
   buttonLock:  '#333',
 };
 
-// ─── Layout (top-down) ───
-export const BARRICADE_X = 180;      // center-x of horizontal barricade wall
-export const BARRICADE_Y = 270;      // center-y of barricade (middle of field)
-export const BARRICADE_W = 20;       // thickness (left-right)
-export const BARRICADE_H = 280;      // span (top-bottom)
-export const FORT_WIDTH = 140;
-export const GROUND_Y = 440;         // kept for legacy references
-export const PLAYFIELD_RIGHT = 960;
-export const PLAYFIELD_TOP = 50;
-export const PLAYFIELD_BOTTOM = 490;

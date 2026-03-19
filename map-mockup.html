@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Browser KOC - Map Mockup</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #111; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: 'Courier New', monospace; flex-direction: column; gap: 20px; }
+h1 { color: #cda; font-size: 18px; }
+.info { color: #999; font-size: 12px; text-align: center; line-height: 1.6; max-width: 700px; }
+canvas { border: 2px solid #444; cursor: crosshair; }
+.controls { color: #aaa; font-size: 12px; text-align: center; }
+</style>
+</head>
+<body>
+<h1>Browser KOC - Fort Map Mockup (Interactive)</h1>
+<p class="info">
+  WASD to move camera | Scroll to zoom | This shows the full world map (~1800x1200) vs the viewport (960x540).<br>
+  The green box is the player's camera view. Red dots are enemy spawn points. The minimap is bottom-right.
+</p>
+<canvas id="c" width="960" height="600"></canvas>
+<p class="controls">Click and drag to pan the camera around the map</p>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// ── World dimensions (bigger than viewport) ──
+const WORLD_W = 1800;
+const WORLD_H = 1200;
+const VIEW_W = 960;
+const VIEW_H = 540;
+
+// ── Camera ──
+let camX = (WORLD_W - VIEW_W) / 2;
+let camY = (WORLD_H - VIEW_H) / 2;
+let zoom = 0.5; // Start zoomed out to show full map
+let targetZoom = 0.5;
+let dragging = false;
+let dragStartX = 0, dragStartY = 0, dragCamX = 0, dragCamY = 0;
+
+// ── Fort layout ──
+const FORT = {
+  // Outer walls (barricades the player defends)
+  x: 400, y: 250,
+  w: 1000, h: 700,
+  wallThickness: 24,
+  gateWidth: 120,
+};
+
+// Gate positions (openings in each wall)
+const GATES = {
+  north: { x: FORT.x + FORT.w/2 - 60, y: FORT.y, w: 120, side: 'top' },
+  south: { x: FORT.x + FORT.w/2 - 60, y: FORT.y + FORT.h - FORT.wallThickness, w: 120, side: 'bottom' },
+  east:  { x: FORT.x + FORT.w - FORT.wallThickness, y: FORT.y + FORT.h/2 - 60, h: 120, side: 'right' },
+  west:  { x: FORT.x, y: FORT.y + FORT.h/2 - 60, h: 120, side: 'left' },
+};
+
+// Buildings inside the fort
+const BUILDINGS = [
+  // Fortification branch - top left
+  { x: 480, y: 310, w: 50, h: 40, name: 'Lumber Mill', color: '#8B6914', branch: 'fort' },
+  { x: 540, y: 310, w: 50, h: 40, name: 'Stoneworks', color: '#888', branch: 'fort' },
+  { x: 600, y: 310, w: 50, h: 40, name: 'Masonry', color: '#999', branch: 'fort' },
+  { x: 660, y: 310, w: 50, h: 40, name: 'Forge', color: '#c84', branch: 'fort' },
+
+  // Military branch - top right
+  { x: 900, y: 310, w: 50, h: 40, name: 'Barracks', color: '#68a', branch: 'military' },
+  { x: 960, y: 310, w: 50, h: 40, name: 'Archery', color: '#6a6', branch: 'military' },
+  { x: 1020, y: 310, w: 50, h: 40, name: 'Kt Academy', color: '#88c', branch: 'military' },
+  { x: 1080, y: 310, w: 50, h: 40, name: 'Adv Combat', color: '#aa8', branch: 'military' },
+
+  // Crafting branch - bottom left
+  { x: 480, y: 820, w: 50, h: 40, name: 'Blacksmith', color: '#a86', branch: 'craft' },
+  { x: 540, y: 820, w: 50, h: 40, name: 'Armory', color: '#8a8', branch: 'craft' },
+  { x: 600, y: 820, w: 50, h: 40, name: 'Weaponsmith', color: '#ca6', branch: 'craft' },
+  { x: 660, y: 820, w: 50, h: 40, name: 'Master Forge', color: '#e94', branch: 'craft' },
+
+  // Magic branch - bottom right
+  { x: 900, y: 820, w: 50, h: 40, name: 'Apothecary', color: '#6a8', branch: 'magic' },
+  { x: 960, y: 820, w: 50, h: 40, name: 'Alch Lab', color: '#8ad', branch: 'magic' },
+  { x: 1020, y: 820, w: 50, h: 40, name: 'Wiz Tower', color: '#a6d', branch: 'magic' },
+  { x: 1080, y: 820, w: 50, h: 40, name: 'Arcane Lib', color: '#c8f', branch: 'magic' },
+
+  // Economy - center
+  { x: 820, y: 560, w: 55, h: 45, name: 'Gold Mine', color: '#da4', branch: 'econ' },
+  { x: 885, y: 560, w: 55, h: 45, name: 'Crystal Mine', color: '#8df', branch: 'econ' },
+  { x: 950, y: 560, w: 55, h: 45, name: 'Treasury', color: '#fd4', branch: 'econ' },
+];
+
+// Enemy spawn zones (outside the fort)
+const SPAWN_ZONES = [
+  // North spawns
+  { x: 600, y: 40, label: 'N' },
+  { x: 800, y: 40, label: 'N' },
+  { x: 1000, y: 40, label: 'N' },
+  // South spawns
+  { x: 600, y: 1140, label: 'S' },
+  { x: 800, y: 1140, label: 'S' },
+  { x: 1000, y: 1140, label: 'S' },
+  // East spawns
+  { x: 1700, y: 400, label: 'E' },
+  { x: 1700, y: 600, label: 'E' },
+  { x: 1700, y: 800, label: 'E' },
+  // West spawns
+  { x: 100, y: 400, label: 'W' },
+  { x: 100, y: 600, label: 'W' },
+  { x: 100, y: 800, label: 'W' },
+];
+
+// Animated enemies (for the mockup)
+let enemies = [];
+const time = { t: 0 };
+function spawnMockEnemies() {
+  enemies = [];
+  for (const sp of SPAWN_ZONES) {
+    for (let i = 0; i < 3; i++) {
+      const angle = Math.atan2(FORT.y + FORT.h/2 - sp.y, FORT.x + FORT.w/2 - sp.x);
+      enemies.push({
+        x: sp.x + (Math.random()-0.5)*80,
+        y: sp.y + (Math.random()-0.5)*80,
+        angle,
+        speed: 15 + Math.random()*20,
+        size: 6 + Math.random()*6,
+        color: ['#4a7','#396','#a54','#585','#765'][Math.floor(Math.random()*5)]
+      });
+    }
+  }
+}
+spawnMockEnemies();
+
+// Player position
+const player = { x: FORT.x + FORT.w/2, y: FORT.y + FORT.h/2 };
+
+// ── Input ──
+const keys = {};
+window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+canvas.addEventListener('mousedown', e => {
+  dragging = true;
+  dragStartX = e.offsetX;
+  dragStartY = e.offsetY;
+  dragCamX = camX;
+  dragCamY = camY;
+});
+canvas.addEventListener('mousemove', e => {
+  if (dragging) {
+    camX = dragCamX - (e.offsetX - dragStartX) / zoom;
+    camY = dragCamY - (e.offsetY - dragStartY) / zoom;
+  }
+});
+canvas.addEventListener('mouseup', () => dragging = false);
+canvas.addEventListener('mouseleave', () => dragging = false);
+canvas.addEventListener('wheel', e => {
+  targetZoom = Math.max(0.3, Math.min(1.5, targetZoom - e.deltaY * 0.001));
+  e.preventDefault();
+}, { passive: false });
+
+function update(dt) {
+  // Camera movement
+  const speed = 400 / zoom;
+  if (keys['w'] || keys['arrowup']) camY -= speed * dt;
+  if (keys['s'] || keys['arrowdown']) camY += speed * dt;
+  if (keys['a'] || keys['arrowleft']) camX -= speed * dt;
+  if (keys['d'] || keys['arrowright']) camX += speed * dt;
+
+  // Smooth zoom
+  zoom += (targetZoom - zoom) * 5 * dt;
+
+  // Clamp camera
+  camX = Math.max(0, Math.min(WORLD_W - VIEW_W/zoom, camX));
+  camY = Math.max(0, Math.min(WORLD_H - VIEW_H/zoom, camY));
+
+  // Animate enemies marching toward fort
+  time.t += dt;
+  for (const e of enemies) {
+    e.x += Math.cos(e.angle) * e.speed * dt;
+    e.y += Math.sin(e.angle) * e.speed * dt;
+    // Reset if they reach the fort walls
+    const dx = e.x - (FORT.x + FORT.w/2);
+    const dy = e.y - (FORT.y + FORT.h/2);
+    if (Math.abs(dx) < FORT.w/2 + 20 && Math.abs(dy) < FORT.h/2 + 20) {
+      // Reset to spawn
+      const sp = SPAWN_ZONES[Math.floor(Math.random() * SPAWN_ZONES.length)];
+      e.x = sp.x + (Math.random()-0.5)*80;
+      e.y = sp.y + (Math.random()-0.5)*80;
+      e.angle = Math.atan2(FORT.y + FORT.h/2 - e.y, FORT.x + FORT.w/2 - e.x);
+    }
+  }
+}
+
+function drawWorld() {
+  ctx.save();
+  ctx.scale(zoom, zoom);
+  ctx.translate(-camX, -camY);
+
+  // ── Ground ──
+  // Outside: dark grass
+  ctx.fillStyle = '#2a4a2a';
+  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+
+  // Grass texture patches
+  ctx.fillStyle = '#245620';
+  for (let gx = 0; gx < WORLD_W; gx += 80) {
+    for (let gy = 0; gy < WORLD_H; gy += 80) {
+      const hash = ((gx * 31 + gy * 17) % 97) / 97;
+      if (hash > 0.5) ctx.fillRect(gx+10, gy+10, 60, 60);
+    }
+  }
+
+  // Dirt paths leading to each gate
+  ctx.fillStyle = '#6a5a3a';
+  // North path
+  ctx.fillRect(FORT.x + FORT.w/2 - 30, 0, 60, FORT.y);
+  // South path
+  ctx.fillRect(FORT.x + FORT.w/2 - 30, FORT.y + FORT.h, 60, WORLD_H - FORT.y - FORT.h);
+  // East path
+  ctx.fillRect(FORT.x + FORT.w, FORT.y + FORT.h/2 - 30, WORLD_W - FORT.x - FORT.w, 60);
+  // West path
+  ctx.fillRect(0, FORT.y + FORT.h/2 - 30, FORT.x, 60);
+
+  // ── Fort courtyard ground ──
+  ctx.fillStyle = '#8a7a6a';
+  ctx.fillRect(FORT.x + FORT.wallThickness, FORT.y + FORT.wallThickness,
+    FORT.w - FORT.wallThickness*2, FORT.h - FORT.wallThickness*2);
+
+  // Cobblestone pattern
+  ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+  ctx.lineWidth = 1;
+  for (let cx = FORT.x + 30; cx < FORT.x + FORT.w - 30; cx += 24) {
+    for (let cy = FORT.y + 30; cy < FORT.y + FORT.h - 30; cy += 24) {
+      const off = (Math.floor(cy/24) % 2) * 12;
+      ctx.strokeRect(cx + off, cy, 22, 22);
+    }
+  }
+
+  // ── Fort walls (barricades) ──
+  const wt = FORT.wallThickness;
+
+  // Wall color with stone texture
+  ctx.fillStyle = '#776655';
+
+  // North wall (with gate gap)
+  ctx.fillRect(FORT.x, FORT.y, GATES.north.x - FORT.x, wt);
+  ctx.fillRect(GATES.north.x + GATES.north.w, FORT.y, FORT.x + FORT.w - GATES.north.x - GATES.north.w, wt);
+
+  // South wall (with gate gap)
+  ctx.fillRect(FORT.x, FORT.y + FORT.h - wt, GATES.south.x - FORT.x, wt);
+  ctx.fillRect(GATES.south.x + GATES.south.w, FORT.y + FORT.h - wt, FORT.x + FORT.w - GATES.south.x - GATES.south.w, wt);
+
+  // East wall (with gate gap)
+  ctx.fillRect(FORT.x + FORT.w - wt, FORT.y, wt, GATES.east.y - FORT.y);
+  ctx.fillRect(FORT.x + FORT.w - wt, GATES.east.y + GATES.east.h, wt, FORT.y + FORT.h - GATES.east.y - GATES.east.h);
+
+  // West wall (with gate gap)
+  ctx.fillRect(FORT.x, FORT.y, wt, GATES.west.y - FORT.y);
+  ctx.fillRect(FORT.x, GATES.west.y + GATES.west.h, wt, FORT.y + FORT.h - GATES.west.y - GATES.west.h);
+
+  // Wall highlight (top edge)
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(FORT.x, FORT.y, FORT.w, 4);
+  ctx.fillRect(FORT.x, FORT.y, 4, FORT.h);
+
+  // Battlements (crenellations along top of walls)
+  ctx.fillStyle = '#887766';
+  // North battlements
+  for (let bx = FORT.x; bx < FORT.x + FORT.w; bx += 30) {
+    if (bx > GATES.north.x - 5 && bx < GATES.north.x + GATES.north.w + 5) continue;
+    ctx.fillRect(bx + 4, FORT.y - 8, 16, 10);
+  }
+  // South battlements
+  for (let bx = FORT.x; bx < FORT.x + FORT.w; bx += 30) {
+    if (bx > GATES.south.x - 5 && bx < GATES.south.x + GATES.south.w + 5) continue;
+    ctx.fillRect(bx + 4, FORT.y + FORT.h - 2, 16, 10);
+  }
+  // East battlements
+  for (let by = FORT.y; by < FORT.y + FORT.h; by += 30) {
+    if (by > GATES.east.y - 5 && by < GATES.east.y + GATES.east.h + 5) continue;
+    ctx.fillRect(FORT.x + FORT.w - 2, by + 4, 10, 16);
+  }
+  // West battlements
+  for (let by = FORT.y; by < FORT.y + FORT.h; by += 30) {
+    if (by > GATES.west.y - 5 && by < GATES.west.y + GATES.west.h + 5) continue;
+    ctx.fillRect(FORT.x - 8, by + 4, 10, 16);
+  }
+
+  // Gate archways
+  ctx.fillStyle = '#554433';
+  // North gate arch
+  ctx.fillRect(GATES.north.x - 6, FORT.y - 4, 6, wt + 8);
+  ctx.fillRect(GATES.north.x + GATES.north.w, FORT.y - 4, 6, wt + 8);
+  ctx.fillRect(GATES.north.x - 6, FORT.y - 4, GATES.north.w + 12, 6);
+  // South gate arch
+  ctx.fillRect(GATES.south.x - 6, FORT.y + FORT.h - wt - 4, 6, wt + 8);
+  ctx.fillRect(GATES.south.x + GATES.south.w, FORT.y + FORT.h - wt - 4, 6, wt + 8);
+  ctx.fillRect(GATES.south.x - 6, FORT.y + FORT.h - 2, GATES.south.w + 12, 6);
+  // East gate arch
+  ctx.fillRect(FORT.x + FORT.w - wt - 4, GATES.east.y - 6, wt + 8, 6);
+  ctx.fillRect(FORT.x + FORT.w - wt - 4, GATES.east.y + GATES.east.h, wt + 8, 6);
+  ctx.fillRect(FORT.x + FORT.w - 2, GATES.east.y - 6, 6, GATES.east.h + 12);
+  // West gate arch
+  ctx.fillRect(FORT.x - 4, GATES.west.y - 6, wt + 8, 6);
+  ctx.fillRect(FORT.x - 4, GATES.west.y + GATES.west.h, wt + 8, 6);
+  ctx.fillRect(FORT.x - 4, GATES.west.y - 6, 6, GATES.west.h + 12);
+
+  // Gate labels
+  ctx.font = '11px monospace';
+  ctx.fillStyle = '#fda';
+  ctx.textAlign = 'center';
+  ctx.fillText('NORTH GATE', GATES.north.x + 60, FORT.y + wt + 16);
+  ctx.fillText('SOUTH GATE', GATES.south.x + 60, FORT.y + FORT.h - wt - 8);
+  ctx.save();
+  ctx.translate(FORT.x + FORT.w - wt - 10, GATES.east.y + 60);
+  ctx.rotate(Math.PI/2);
+  ctx.fillText('EAST GATE', 0, 0);
+  ctx.restore();
+  ctx.save();
+  ctx.translate(FORT.x + wt + 16, GATES.west.y + 60);
+  ctx.rotate(Math.PI/2);
+  ctx.fillText('WEST GATE', 0, 0);
+  ctx.restore();
+
+  // Corner towers
+  ctx.fillStyle = '#665544';
+  const towerR = 30;
+  const towers = [
+    [FORT.x, FORT.y],
+    [FORT.x + FORT.w, FORT.y],
+    [FORT.x, FORT.y + FORT.h],
+    [FORT.x + FORT.w, FORT.y + FORT.h],
+  ];
+  for (const [tx, ty] of towers) {
+    ctx.beginPath();
+    ctx.arc(tx, ty, towerR, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = '#554433';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Tower battlements
+    ctx.fillStyle = '#887766';
+    for (let a = 0; a < Math.PI*2; a += Math.PI/4) {
+      ctx.fillRect(tx + Math.cos(a)*(towerR+2) - 4, ty + Math.sin(a)*(towerR+2) - 4, 8, 8);
+    }
+    ctx.fillStyle = '#665544';
+  }
+
+  // ── Buildings ──
+  for (const b of BUILDINGS) {
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fillRect(b.x + 3, b.y + 3, b.w, b.h);
+    // Building
+    ctx.fillStyle = b.color;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    // Roof detail
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(b.x, b.y, b.w, 6);
+    // Border
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+    // Label
+    ctx.fillStyle = '#fff';
+    ctx.font = '7px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(b.name, b.x + b.w/2, b.y + b.h + 12);
+  }
+
+  // Branch labels
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = '#dca';
+  ctx.textAlign = 'left';
+  ctx.fillText('FORTIFICATION', 480, 300);
+  ctx.fillText('MILITARY', 900, 300);
+  ctx.fillText('CRAFTING', 480, 810);
+  ctx.fillText('MAGIC', 900, 810);
+  ctx.textAlign = 'center';
+  ctx.fillText('ECONOMY', 885, 550);
+
+  // ── Torch lights ──
+  ctx.fillStyle = 'rgba(255, 200, 80, 0.12)';
+  const torches = [
+    [FORT.x + 50, FORT.y + 50],
+    [FORT.x + FORT.w - 50, FORT.y + 50],
+    [FORT.x + 50, FORT.y + FORT.h - 50],
+    [FORT.x + FORT.w - 50, FORT.y + FORT.h - 50],
+    [FORT.x + FORT.w/2, FORT.y + 50],
+    [FORT.x + FORT.w/2, FORT.y + FORT.h - 50],
+  ];
+  for (const [tx, ty] of torches) {
+    ctx.beginPath();
+    ctx.arc(tx, ty, 35 + Math.sin(time.t * 3) * 3, 0, Math.PI*2);
+    ctx.fill();
+    // Flame
+    ctx.fillStyle = '#fa3';
+    ctx.beginPath();
+    ctx.arc(tx, ty, 3, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 200, 80, 0.12)';
+  }
+
+  // ── Enemies ──
+  for (const e of enemies) {
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(e.x, e.y + e.size + 1, e.size, 3, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = e.color;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.size, 0, Math.PI*2);
+    ctx.fill();
+    // Eyes
+    ctx.fillStyle = '#ff0';
+    ctx.beginPath();
+    ctx.arc(e.x + Math.cos(e.angle)*e.size*0.3 - 2, e.y + Math.sin(e.angle)*e.size*0.3, 1.5, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(e.x + Math.cos(e.angle)*e.size*0.3 + 2, e.y + Math.sin(e.angle)*e.size*0.3, 1.5, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // ── Spawn zone indicators ──
+  for (const sp of SPAWN_ZONES) {
+    ctx.strokeStyle = 'rgba(255,50,50,0.4)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5,5]);
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, 40, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#f44';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('SPAWN', sp.x, sp.y - 45);
+  }
+
+  // ── Player ──
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(player.x, player.y + 20, 20, 6, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Body
+  ctx.fillStyle = '#4477cc';
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, 18, 0, Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle = '#335599';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Helmet
+  ctx.fillStyle = '#888';
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, 10, 0, Math.PI*2);
+  ctx.fill();
+  // Label
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('PLAYER', player.x, player.y - 24);
+
+  // ── Troop positions (mock) ──
+  const troopPositions = [
+    // Near north gate
+    { x: FORT.x + FORT.w/2 - 40, y: FORT.y + 60, color: '#68a' },
+    { x: FORT.x + FORT.w/2 + 40, y: FORT.y + 60, color: '#68a' },
+    { x: FORT.x + FORT.w/2, y: FORT.y + 80, color: '#6a6' },
+    // Near south gate
+    { x: FORT.x + FORT.w/2 - 40, y: FORT.y + FORT.h - 60, color: '#68a' },
+    { x: FORT.x + FORT.w/2 + 40, y: FORT.y + FORT.h - 60, color: '#68a' },
+    // Near east gate
+    { x: FORT.x + FORT.w - 60, y: FORT.y + FORT.h/2 - 30, color: '#88c' },
+    { x: FORT.x + FORT.w - 60, y: FORT.y + FORT.h/2 + 30, color: '#88c' },
+    // Near west gate
+    { x: FORT.x + 60, y: FORT.y + FORT.h/2, color: '#88c' },
+  ];
+  for (const t of troopPositions) {
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.beginPath();
+    ctx.ellipse(t.x, t.y + 12, 10, 3, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = t.color;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, 10, 0, Math.PI*2);
+    ctx.fill();
+    // Friendly marker
+    ctx.fillStyle = '#4f4';
+    ctx.beginPath();
+    ctx.moveTo(t.x, t.y - 14);
+    ctx.lineTo(t.x + 4, t.y - 10);
+    ctx.lineTo(t.x, t.y - 6);
+    ctx.lineTo(t.x - 4, t.y - 10);
+    ctx.fill();
+  }
+
+  // ── World boundary ──
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([10, 10]);
+  ctx.strokeRect(0, 0, WORLD_W, WORLD_H);
+  ctx.setLineDash([]);
+
+  // World size label
+  ctx.fillStyle = '#666';
+  ctx.font = '14px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`World: ${WORLD_W}x${WORLD_H}`, 10, 20);
+
+  // ── Camera viewport rectangle ──
+  ctx.strokeStyle = '#0f0';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([8, 4]);
+  const vx = camX + (canvas.width/2/zoom - VIEW_W/2);
+  const vy = camY + (canvas.height/2/zoom - VIEW_H/2);
+  ctx.strokeRect(camX, camY, VIEW_W/zoom, VIEW_H/zoom);
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#0f0';
+  ctx.font = '12px monospace';
+  ctx.fillText(`Camera View (${VIEW_W}x${VIEW_H})`, camX + 5, camY - 5);
+
+  ctx.restore();
+}
+
+function drawMinimap() {
+  const mmW = 200;
+  const mmH = mmW * (WORLD_H / WORLD_W);
+  const mmX = canvas.width - mmW - 12;
+  const mmY = canvas.height - mmH - 12;
+  const scaleX = mmW / WORLD_W;
+  const scaleY = mmH / WORLD_H;
+
+  // Background
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(mmX - 2, mmY - 2, mmW + 4, mmH + 4);
+
+  // Grass
+  ctx.fillStyle = '#2a4a2a';
+  ctx.fillRect(mmX, mmY, mmW, mmH);
+
+  // Fort
+  ctx.fillStyle = '#8a7a6a';
+  ctx.fillRect(mmX + FORT.x * scaleX, mmY + FORT.y * scaleY, FORT.w * scaleX, FORT.h * scaleY);
+
+  // Fort walls
+  ctx.strokeStyle = '#776655';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(mmX + FORT.x * scaleX, mmY + FORT.y * scaleY, FORT.w * scaleX, FORT.h * scaleY);
+
+  // Gate gaps (darker openings)
+  ctx.fillStyle = '#6a5a3a';
+  // North
+  ctx.fillRect(mmX + GATES.north.x * scaleX, mmY + FORT.y * scaleY, GATES.north.w * scaleX, 3);
+  // South
+  ctx.fillRect(mmX + GATES.south.x * scaleX, mmY + (FORT.y + FORT.h) * scaleY - 3, GATES.south.w * scaleX, 3);
+  // East
+  ctx.fillRect(mmX + (FORT.x + FORT.w) * scaleX - 3, mmY + GATES.east.y * scaleY, 3, GATES.east.h * scaleY);
+  // West
+  ctx.fillRect(mmX + FORT.x * scaleX, mmY + GATES.west.y * scaleY, 3, GATES.west.h * scaleY);
+
+  // Enemies (red dots)
+  ctx.fillStyle = '#f44';
+  for (const e of enemies) {
+    ctx.fillRect(mmX + e.x * scaleX - 1, mmY + e.y * scaleY - 1, 2, 2);
+  }
+
+  // Troops (blue dots)
+  ctx.fillStyle = '#48f';
+  for (const t of troopPositions) {
+    ctx.fillRect(mmX + t.x * scaleX - 1.5, mmY + t.y * scaleY - 1.5, 3, 3);
+  }
+
+  // Player (bright blue dot)
+  ctx.fillStyle = '#4f4';
+  ctx.beginPath();
+  ctx.arc(mmX + player.x * scaleX, mmY + player.y * scaleY, 3, 0, Math.PI*2);
+  ctx.fill();
+
+  // Camera viewport
+  ctx.strokeStyle = '#0f0';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(
+    mmX + camX * scaleX,
+    mmY + camY * scaleY,
+    (VIEW_W / zoom) * scaleX,
+    (VIEW_H / zoom) * scaleY
+  );
+
+  // Label
+  ctx.fillStyle = '#fff';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('MINIMAP', mmX + mmW/2, mmY - 5);
+}
+
+function drawHUDMock() {
+  // Mock HUD overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(8, 8, 200, 50);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('HP', 14, 24);
+  ctx.fillStyle = '#441111';
+  ctx.fillRect(34, 14, 160, 12);
+  ctx.fillStyle = '#cc3333';
+  ctx.fillRect(34, 14, 120, 12);
+
+  ctx.fillStyle = '#fff';
+  ctx.fillText('XP', 14, 42);
+  ctx.fillStyle = '#444411';
+  ctx.fillRect(34, 32, 160, 12);
+  ctx.fillStyle = '#cccc33';
+  ctx.fillRect(34, 32, 80, 12);
+
+  // Wave info
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(canvas.width/2 - 80, 8, 160, 28);
+  ctx.fillStyle = '#fda';
+  ctx.font = 'bold 12px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('WAVE 15 / 50', canvas.width/2, 27);
+
+  // Gold
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(canvas.width - 130, 8, 120, 28);
+  ctx.fillStyle = '#fd4';
+  ctx.font = 'bold 12px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('G 4,250', canvas.width - 18, 27);
+
+  // Wall health indicators
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(8, canvas.height - 70, 160, 60);
+  ctx.fillStyle = '#ddd';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('WALL STATUS', 14, canvas.height - 55);
+
+  const walls = [
+    { name: 'North', pct: 0.85, color: '#4a4' },
+    { name: 'South', pct: 0.60, color: '#aa4' },
+    { name: 'East',  pct: 1.0,  color: '#4a4' },
+    { name: 'West',  pct: 0.25, color: '#a44' },
+  ];
+  walls.forEach((w, i) => {
+    const by = canvas.height - 44 + i * 12;
+    ctx.fillStyle = '#888';
+    ctx.fillText(w.name, 14, by + 8);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(56, by, 100, 8);
+    ctx.fillStyle = w.color;
+    ctx.fillRect(56, by, 100 * w.pct, 8);
+  });
+}
+
+const troopPositions = [
+  { x: FORT.x + FORT.w/2 - 40, y: FORT.y + 60, color: '#68a' },
+  { x: FORT.x + FORT.w/2 + 40, y: FORT.y + 60, color: '#68a' },
+  { x: FORT.x + FORT.w/2, y: FORT.y + 80, color: '#6a6' },
+  { x: FORT.x + FORT.w/2 - 40, y: FORT.y + FORT.h - 60, color: '#68a' },
+  { x: FORT.x + FORT.w/2 + 40, y: FORT.y + FORT.h - 60, color: '#68a' },
+  { x: FORT.x + FORT.w - 60, y: FORT.y + FORT.h/2 - 30, color: '#88c' },
+  { x: FORT.x + FORT.w - 60, y: FORT.y + FORT.h/2 + 30, color: '#88c' },
+  { x: FORT.x + 60, y: FORT.y + FORT.h/2, color: '#88c' },
+];
+
+let lastTime = performance.now();
+function loop() {
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  lastTime = now;
+
+  update(dt);
+
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  drawWorld();
+  drawHUDMock();
+  drawMinimap();
+
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>

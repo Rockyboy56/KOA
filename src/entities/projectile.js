@@ -1,5 +1,5 @@
 import { drawRect, drawCircle, getCtx } from '../renderer.js';
-import { GAME_WIDTH, GAME_HEIGHT } from '../config.js';
+import { WORLD_W, WORLD_H } from '../config.js';
 
 export function createProjectile(x, y, dirOrAngle, damage, speed, type = 'arrow', magic = false, angle = null) {
   // Support both old API (dirOrAngle = -1/1 for left/right) and new angle-based API
@@ -36,7 +36,7 @@ export function updateProjectiles(projectiles, dt) {
     const p = projectiles[i];
     p.x += p.dx * p.speed * dt;
     p.y += p.dy * p.speed * dt;
-    if (p.x < -20 || p.x > GAME_WIDTH + 20 || p.y < -20 || p.y > GAME_HEIGHT + 20) {
+    if (p.x < -20 || p.x > WORLD_W + 20 || p.y < -20 || p.y > WORLD_H + 20) {
       p.alive = false;
     }
     if (!p.alive) projectiles.splice(i, 1);
@@ -45,40 +45,152 @@ export function updateProjectiles(projectiles, dt) {
 
 export function drawProjectile(p) {
   const ctx = getCtx();
+  ctx.save();
+
+  const pcx = (p.x + p.width / 2) | 0;
+  const pcy = (p.y + p.height / 2) | 0;
 
   if (p.type === 'arrow') {
     ctx.save();
-    ctx.translate(p.x + p.width / 2, p.y + p.height / 2);
+    ctx.translate(pcx, pcy);
     ctx.rotate(p.angle);
-    ctx.fillStyle = '#8B4513';
-    ctx.fillRect(-6, -2, 12, 4);
-    // Arrowhead
-    ctx.fillStyle = '#aaa';
+    // Shaft with gradient (brown)
+    const shaftGrad = ctx.createLinearGradient(-7, 0, 7, 0);
+    shaftGrad.addColorStop(0, '#6a3010');
+    shaftGrad.addColorStop(0.5, '#a06828');
+    shaftGrad.addColorStop(1, '#7a4818');
+    ctx.fillStyle = shaftGrad;
     ctx.beginPath();
-    ctx.moveTo(6, -3);
-    ctx.lineTo(10, 0);
-    ctx.lineTo(6, 3);
+    ctx.moveTo(-7, -1);
+    ctx.lineTo(7, -0.8);
+    ctx.lineTo(7, 0.8);
+    ctx.lineTo(-7, 1);
+    ctx.closePath();
     ctx.fill();
-    // Fletching
-    ctx.fillStyle = '#866';
-    ctx.fillRect(-7, -3, 3, 6);
+    // Metallic arrowhead triangle with fill
+    const headGrad = ctx.createLinearGradient(7, 0, 13, 0);
+    headGrad.addColorStop(0, '#888');
+    headGrad.addColorStop(0.5, '#ccc');
+    headGrad.addColorStop(1, '#eee');
+    ctx.fillStyle = headGrad;
+    ctx.beginPath();
+    ctx.moveTo(7, -3.5);
+    ctx.lineTo(13, 0);
+    ctx.lineTo(7, 3.5);
+    ctx.closePath();
+    ctx.fill();
+    // Arrowhead edge highlight
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(8, -2.5);
+    ctx.lineTo(12, 0);
+    ctx.stroke();
+    // 2-3 feather fletching at tail
+    const featherColor = '#994433';
+    for (let i = -1; i <= 1; i++) {
+      ctx.fillStyle = i === 0 ? '#884030' : featherColor;
+      ctx.beginPath();
+      ctx.moveTo(-7, i * 0.5);
+      ctx.bezierCurveTo(-9, i * 0.5 + i * 1.5, -10, i * 0.5 + i * 3, -8, i * 0.5 + i * 3.5);
+      ctx.bezierCurveTo(-7, i * 0.5 + i * 2, -7, i * 0.5 + i * 1, -6, i * 0.5);
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.restore();
+
   } else if (p.type === 'magic') {
-    drawCircle(p.x + 5, p.y + 5, 6, '#a4f');
-    drawCircle(p.x + 5, p.y + 5, 3, '#f8f');
-  } else if (p.type === 'playerArrow') {
-    ctx.save();
-    ctx.translate(p.x + p.width / 2, p.y + p.height / 2);
-    ctx.rotate(p.angle);
-    ctx.fillStyle = '#ddd';
-    ctx.fillRect(-6, -2, 12, 4);
-    // Arrowhead
-    ctx.fillStyle = '#ff8';
+    // 3 trailing afterimage circles that fade
+    const tailDx = -p.dx;
+    const tailDy = -p.dy;
+    for (let i = 3; i >= 1; i--) {
+      const d = i * 7;
+      const alpha = (4 - i) * 0.12;
+      const tr = 4 - i * 0.8;
+      const tx = pcx + tailDx * d;
+      const ty = pcy + tailDy * d;
+      const tGrad = ctx.createRadialGradient(tx, ty, 0, tx, ty, tr);
+      tGrad.addColorStop(0, `rgba(200,140,255,${alpha})`);
+      tGrad.addColorStop(1, `rgba(120,40,200,0)`);
+      ctx.fillStyle = tGrad;
+      ctx.beginPath();
+      ctx.arc(tx, ty, tr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Main glowing orb with radial gradient (purple center, transparent edge)
+    const orbGrad = ctx.createRadialGradient(pcx, pcy, 0, pcx, pcy, 5);
+    orbGrad.addColorStop(0, 'rgba(240,200,255,0.95)');
+    orbGrad.addColorStop(0.3, 'rgba(180,100,255,0.8)');
+    orbGrad.addColorStop(0.7, 'rgba(140,60,220,0.4)');
+    orbGrad.addColorStop(1, 'rgba(100,20,180,0)');
+    ctx.fillStyle = orbGrad;
     ctx.beginPath();
-    ctx.moveTo(6, -3);
-    ctx.lineTo(10, 0);
-    ctx.lineTo(6, 3);
+    ctx.arc(pcx, pcy, 5, 0, Math.PI * 2);
     ctx.fill();
+    // Bright core
+    ctx.fillStyle = '#f0d0ff';
+    ctx.beginPath();
+    ctx.arc(pcx, pcy, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+  } else if (p.type === 'playerArrow') {
+    // Warm glow halo: radial gradient behind it
+    const haloGrad = ctx.createRadialGradient(pcx, pcy, 0, pcx, pcy, 10);
+    haloGrad.addColorStop(0, 'rgba(255,240,160,0.25)');
+    haloGrad.addColorStop(0.5, 'rgba(255,220,100,0.1)');
+    haloGrad.addColorStop(1, 'rgba(255,200,60,0)');
+    ctx.fillStyle = haloGrad;
+    ctx.beginPath();
+    ctx.arc(pcx, pcy, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(pcx, pcy);
+    ctx.rotate(p.angle);
+    // Golden shaft with gradient
+    const gShaftGrad = ctx.createLinearGradient(-7, 0, 7, 0);
+    gShaftGrad.addColorStop(0, '#c8a030');
+    gShaftGrad.addColorStop(0.5, '#e8c860');
+    gShaftGrad.addColorStop(1, '#d0a840');
+    ctx.fillStyle = gShaftGrad;
+    ctx.beginPath();
+    ctx.moveTo(-7, -1);
+    ctx.lineTo(7, -0.7);
+    ctx.lineTo(7, 0.7);
+    ctx.lineTo(-7, 1);
+    ctx.closePath();
+    ctx.fill();
+    // Shaft highlight
+    ctx.strokeStyle = 'rgba(255,255,220,0.5)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-5, -0.5);
+    ctx.lineTo(6, -0.3);
+    ctx.stroke();
+    // Bright arrowhead with warm metallic fill
+    const gHeadGrad = ctx.createLinearGradient(7, 0, 13, 0);
+    gHeadGrad.addColorStop(0, '#ddb040');
+    gHeadGrad.addColorStop(0.5, '#ffe070');
+    gHeadGrad.addColorStop(1, '#fff8c0');
+    ctx.fillStyle = gHeadGrad;
+    ctx.beginPath();
+    ctx.moveTo(7, -3.5);
+    ctx.lineTo(13, 0);
+    ctx.lineTo(7, 3.5);
+    ctx.closePath();
+    ctx.fill();
+    // 3 feather fletching at tail
+    for (let i = -1; i <= 1; i++) {
+      ctx.fillStyle = i === 0 ? '#a0a8b0' : '#8890a0';
+      ctx.beginPath();
+      ctx.moveTo(-7, i * 0.5);
+      ctx.bezierCurveTo(-9, i * 0.5 + i * 1.5, -10, i * 0.5 + i * 3, -8, i * 0.5 + i * 3.5);
+      ctx.bezierCurveTo(-7, i * 0.5 + i * 2, -7, i * 0.5 + i * 1, -6, i * 0.5);
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.restore();
   }
+
+  ctx.restore();
 }

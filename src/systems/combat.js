@@ -1,16 +1,19 @@
 import { aabb } from '../utils/collision.js';
-import { dist } from '../utils/math.js';
+import { dist, clamp } from '../utils/math.js';
 import { getAttackBox, getAttackDamage, damagePlayer, addXP } from '../entities/player.js';
 import { damageEnemy, knockbackEnemy } from '../entities/enemy.js';
-import { damageBarricade } from '../entities/barricade.js';
+import { damageWall, getWallSegments } from '../entities/barricade.js';
 import { damageTroop } from '../entities/troop.js';
 import { createGoldDrop } from '../entities/goldDrop.js';
 import { createProjectile } from '../entities/projectile.js';
-import { WEAPONS } from '../config.js';
-import { shake } from '../renderer.js';
+import { WORLD_W, WORLD_H, FORT } from '../config.js';
+import { shake, getCtx } from '../renderer.js';
+import { getEquippedWeapon } from './economy.js';
+import { spawnDeathBurst, spawnGoldSparkle, spawnWallImpact, spawnCritRing, spawnBlockSpark } from './particles.js';
+import { playSwordSwing, playHeavyHit, playCrossbowFire, playEnemyDeath, playPlayerDamage, playBarricadeHit, playBarricadeBreak, playCritHit } from './audio.js';
 
-export function processCombat(dt, player, enemies, barricade, goldDrops, projectiles, troops, floatingTexts) {
-  const weapon = WEAPONS[player.weapon];
+export function processCombat(dt, player, enemies, walls, goldDrops, projectiles, troops, floatingTexts) {
+  const weapon = getEquippedWeapon(player);
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
 
@@ -18,6 +21,10 @@ export function processCombat(dt, player, enemies, barricade, goldDrops, project
   if (player.attacking && player.attackPhase === 'active' && weapon.type !== 'ranged') {
     const box = getAttackBox(player);
     if (box) {
+      if (!player.hitEnemiesThisSwing.has('_swingSound')) {
+        playSwordSwing();
+        player.hitEnemiesThisSwing.add('_swingSound');
+      }
       const { dmg, isCrit, cleave, knockbackMult } = getAttackDamage(player);
       let hitCount = 0;
 
@@ -37,11 +44,16 @@ export function processCombat(dt, player, enemies, barricade, goldDrops, project
           // Floating text
           if (dealt > 0) {
             floatingTexts.push(createFloatingText(e.x + e.width / 2, e.y - 10, dealt, isCrit ? '#ff0' : '#fff'));
+            playHeavyHit();
+            if (isCrit) {
+              playCritHit();
+              spawnCritRing(e.x + e.width / 2, e.y);
+            }
           }
 
           // Death
           if (!e.alive) {
-            handleEnemyDeath(e, player, goldDrops);
+            handleEnemyDeath(e, player, goldDrops, floatingTexts);
           }
 
           // Special: AoE every 3rd swing (Maul of Titans)
@@ -54,6 +66,21 @@ export function processCombat(dt, player, enemies, barricade, goldDrops, project
             const proj = createProjectile(pcx, pcy, player.facing, 50, 400, 'magic');
             projectiles.push(proj);
           }
+
+          // Special: Stun for 0.3s — freezes attack AND movement (Mithril Maul)
+          if (weapon.special === 'stun03' && e.alive) {
+            e.attackTimer = Math.max(e.attackTimer, 0.3);
+            e.stunTimer = 0.3;
+          }
+
+          // Special: Double Strike — 30% chance for bonus hit (Twin Daggers)
+          if (weapon.special === 'doubleStrike' && e.alive && Math.random() < 0.3) {
+            const bonus = damageEnemy(e, Math.round(dmg * 0.5));
+            if (bonus > 0) {
+              floatingTexts.push(createFloatingText(e.x + e.width / 2, e.y - 20, bonus, '#aaf'));
+            }
+            if (!e.alive) handleEnemyDeath(e, player, goldDrops, floatingTexts);
+          }
         }
       }
     }
@@ -63,14 +90,17 @@ export function processCombat(dt, player, enemies, barricade, goldDrops, project
   if (player.attacking && player.attackPhase === 'active' && weapon.type === 'ranged') {
     if (!player.hitEnemiesThisSwing.has('rangedFired')) {
       player.hitEnemiesThisSwing.add('rangedFired');
+      playCrossbowFire();
       const proj = createProjectile(
         pcx + Math.cos(player.facing) * 20,
         pcy + Math.sin(player.facing) * 20,
         player.facing,
-        weapon.damage * player.meleeDmgMult,
+        weapon.damage * player.meleeDmgMult * player.buildingDmgMult,
         350,
         'playerArrow'
       );
+      // Pierce: projectile passes through multiple enemies
+      proj.pierceLeft = weapon.special === 'pierce3' ? 3 : weapon.special === 'pierce2' ? 2 : 1;
       projectiles.push(proj);
     }
   }
@@ -82,9 +112,18 @@ export function processCombat(dt, player, enemies, barricade, goldDrops, project
     if (e.type === 'melee') {
       const d = dist(e.x + e.width / 2, e.y + e.height / 2, pcx, pcy);
       if (d < 50 && e.attackTimer <= 0) {
+        const wasBlocking = player.blocking;
         const dealt = damagePlayer(player, e.damage);
         e.attackTimer = e.attackRate * (e.buffed ? 0.75 : 1);
+        e.attackAnim = 1; // trigger lunge animation
         floatingTexts.push(createFloatingText(pcx, pcy - 20, dealt, '#f44'));
+        playPlayerDamage();
+        // Block spark at shield position
+        if (wasBlocking) {
+          const sparkX = pcx + Math.cos(player.facing) * 15;
+          const sparkY = pcy + Math.sin(player.facing) * 15;
+          spawnBlockSpark(sparkX, sparkY);
+        }
       }
     }
 
@@ -92,7 +131,8 @@ export function processCombat(dt, player, enemies, barricade, goldDrops, project
       const ecx = e.x + e.width / 2;
       const ecy = e.y + e.height / 2;
       const d = dist(ecx, ecy, pcx, pcy);
-      if (d < (e.range + 50)) {
+      // Only shoot if inside fort (line of sight) or close enough outside
+      if (d < (e.range + 50) && (e.insideFort || d < 150)) {
         e.attackTimer = e.attackRate;
         const projType = e.magic ? 'magic' : 'arrow';
         const angle = Math.atan2(pcy - ecy, pcx - ecx);
@@ -106,14 +146,26 @@ export function processCombat(dt, player, enemies, barricade, goldDrops, project
       const ecx = e.x + e.width / 2;
       const ecy = e.y + e.height / 2;
       const dPlayer = dist(ecx, ecy, pcx, pcy);
-      const dBarricade = dist(ecx, ecy, barricade.x + barricade.width / 2, barricade.y + barricade.height / 2);
 
-      if (dPlayer < 40 || dBarricade < 40 || e.fuseTimer <= 0) {
+      // Check distance to nearest wall segment on their target gate side
+      let dWall = Infinity;
+      const targetWall = walls[e.targetGate];
+      if (targetWall && !targetWall.destroyed) {
+        const segments = getWallSegments(targetWall);
+        for (const seg of segments) {
+          const nearX = clamp(ecx, seg.x, seg.x + seg.w);
+          const nearY = clamp(ecy, seg.y, seg.y + seg.h);
+          const d = dist(ecx, ecy, nearX, nearY);
+          if (d < dWall) dWall = d;
+        }
+      }
+
+      if (dPlayer < 40 || dWall < 40 || e.fuseTimer <= 0) {
         // Explode
-        doExplosion(ecx, ecy, 64, e.damage, player, enemies, barricade, troops, goldDrops, floatingTexts);
+        doExplosion(ecx, ecy, 64, e.damage, player, enemies, walls, troops, goldDrops, floatingTexts);
         e.alive = false;
         e.deathTimer = 0.3;
-        handleEnemyDeath(e, player, goldDrops);
+        handleEnemyDeath(e, player, goldDrops, floatingTexts);
       }
     }
 
@@ -126,29 +178,44 @@ export function processCombat(dt, player, enemies, barricade, goldDrops, project
       if (dPlayer < 80 && e.attackTimer <= 0) {
         const dealt = damagePlayer(player, e.damage);
         e.attackTimer = e.attackRate;
+        e.attackAnim = 1; // boss lunge animation
         shake(5, 150);
         floatingTexts.push(createFloatingText(pcx, pcy - 20, dealt, '#f44'));
       }
 
-      // Charge
+      // Charge windup
       e.chargeTimer -= dt;
       if (e.chargeTimer <= 0 && !e.charging) {
         e.charging = true;
-        e.chargeTimer = 15;
-        setTimeout(() => {
-          if (e.alive) {
-            // Charge toward player position
-            const angle = Math.atan2(pcy - ecy, pcx - ecx);
-            e.x += Math.cos(angle) * 200;
-            e.y += Math.sin(angle) * 200;
-            e.charging = false;
-            // Damage player if in path
-            if (dist(e.x + e.width / 2, e.y + e.height / 2, pcx, pcy) < 80) {
-              const dealt = damagePlayer(player, 40);
-              floatingTexts.push(createFloatingText(pcx, pcy - 20, dealt, '#f44'));
-            }
+        e.chargeWindupTimer = 1.5;
+      }
+      if (e.charging && e.chargeWindupTimer > 0) {
+        e.chargeWindupTimer -= dt;
+        if (e.chargeWindupTimer <= 0) {
+          // Execute charge using CURRENT player position
+          const curPcx = player.x + player.width / 2;
+          const curPcy = player.y + player.height / 2;
+          const ecx2 = e.x + e.width / 2;
+          const ecy2 = e.y + e.height / 2;
+          const angle = Math.atan2(curPcy - ecy2, curPcx - ecx2);
+          e.x += Math.cos(angle) * 200;
+          e.y += Math.sin(angle) * 200;
+          // Clamp to world bounds after charge
+          e.x = clamp(e.x, 0, WORLD_W - e.width);
+          e.y = clamp(e.y, 0, WORLD_H - e.height);
+          // Check if boss ended up inside fort
+          const ecxPost = e.x + e.width / 2;
+          const ecyPost = e.y + e.height / 2;
+          if (ecxPost > FORT.x && ecxPost < FORT.x + FORT.w && ecyPost > FORT.y && ecyPost < FORT.y + FORT.h) {
+            e.insideFort = true;
           }
-        }, 1500);
+          e.charging = false;
+          e.chargeTimer = 15;
+          if (dist(e.x + e.width / 2, e.y + e.height / 2, curPcx, curPcy) < 80) {
+            const dealt = damagePlayer(player, 40);
+            floatingTexts.push(createFloatingText(curPcx, curPcy - 20, dealt, '#f44'));
+          }
+        }
       }
 
       // Roar (buff nearby)
@@ -164,20 +231,36 @@ export function processCombat(dt, player, enemies, barricade, goldDrops, project
       }
     }
 
-    // Enemy attacks barricade
-    if (e.type === 'melee' || e.type === 'boss') {
-      if (!barricade.destroyed) {
+    // Enemy attacks barricade wall on their target gate side
+    if ((e.type === 'melee' || e.type === 'boss') && !e.insideFort) {
+      const wall = walls[e.targetGate];
+      if (wall && !wall.destroyed) {
         const ecx = e.x + e.width / 2;
         const ecy = e.y + e.height / 2;
-        // Check if enemy is near the barricade wall (check x and y overlap)
-        const bLeft = barricade.x;
-        const bRight = barricade.x + barricade.width;
-        const bTop = barricade.y;
-        const bBottom = barricade.y + barricade.height;
 
-        if (ecx >= bLeft - 20 && ecx <= bRight + 20 && ecy >= bTop && ecy <= bBottom && e.attackTimer <= 0) {
-          damageBarricade(barricade, e.damage);
+        // Check distance to nearest wall segment
+        const segments = getWallSegments(wall);
+        let nearestSegDist = Infinity;
+        for (const seg of segments) {
+          const nearX = clamp(ecx, seg.x, seg.x + seg.w);
+          const nearY = clamp(ecy, seg.y, seg.y + seg.h);
+          const d = dist(ecx, ecy, nearX, nearY);
+          if (d < nearestSegDist) nearestSegDist = d;
+        }
+
+        if (nearestSegDist < 50 && e.attackTimer <= 0) {
+          const wasAlive = !wall.destroyed;
+          damageWall(wall, e.damage);
           e.attackTimer = e.attackRate * (e.buffed ? 0.75 : 1);
+          e.attackAnim = 1; // trigger lunge animation
+          spawnWallImpact(ecx, ecy);
+          if (wall.destroyed && wasAlive) {
+            playBarricadeBreak();
+            shake(7, 200); // heavy shake on barricade break
+          } else {
+            playBarricadeHit();
+            shake(4, 120); // medium shake on barricade hit
+          }
         }
       }
     }
@@ -194,17 +277,37 @@ export function processCombat(dt, player, enemies, barricade, goldDrops, project
     if (!isPlayerProj) {
       // Enemy projectile -> hits player
       if (aabb(p, player)) {
+        const wasBlocking = player.blocking;
         const dealt = damagePlayer(player, p.damage, p.magic);
         floatingTexts.push(createFloatingText(pcx, pcy - 10, dealt, '#f44'));
+        // Block spark for blocked projectiles
+        if (wasBlocking && !p.magic) {
+          const sparkX = pcx + Math.cos(player.facing) * 15;
+          const sparkY = pcy + Math.sin(player.facing) * 15;
+          spawnBlockSpark(sparkX, sparkY);
+        }
         p.alive = false;
-      }
-      // Hits barricade
-      if (!barricade.destroyed && aabb(p, barricade)) {
-        damageBarricade(barricade, p.damage);
-        p.alive = false;
+      } else {
+        // Check all 4 walls for projectile collision
+        let hitWall = false;
+        const sides = ['north', 'south', 'east', 'west'];
+        for (const side of sides) {
+          if (hitWall) break;
+          const wall = walls[side];
+          if (!wall || wall.destroyed) continue;
+          const segments = getWallSegments(wall);
+          for (const seg of segments) {
+            if (aabb(p, { x: seg.x, y: seg.y, width: seg.w, height: seg.h })) {
+              damageWall(wall, p.damage);
+              p.alive = false;
+              hitWall = true;
+              break;
+            }
+          }
+        }
       }
     } else {
-      // Player projectile -> hits enemies
+      // Player projectile -> hits enemies (supports pierce)
       for (const e of enemies) {
         if (!e.alive) continue;
         if (aabb(p, e)) {
@@ -212,9 +315,12 @@ export function processCombat(dt, player, enemies, barricade, goldDrops, project
           if (dealt > 0) {
             floatingTexts.push(createFloatingText(e.x + e.width / 2, e.y - 10, dealt, '#fff'));
           }
-          if (!e.alive) handleEnemyDeath(e, player, goldDrops);
-          p.alive = false;
-          break;
+          if (!e.alive) handleEnemyDeath(e, player, goldDrops, floatingTexts);
+          // Pierce: decrement pierce counter, destroy if exhausted
+          const pierce = p.pierceLeft || 1;
+          if (pierce <= 1) { p.alive = false; break; }
+          p.pierceLeft = pierce - 1;
+          // Continue to hit next enemy (don't break)
         }
       }
     }
@@ -237,15 +343,30 @@ export function processCombat(dt, player, enemies, barricade, goldDrops, project
   }
 }
 
-function handleEnemyDeath(e, player, goldDrops) {
+export function handleEnemyDeath(e, player, goldDrops, floatingTexts) {
+  playEnemyDeath();
   addXP(player, e.xp);
   player.score += e.score;
   player.kills++;
 
+  // Hit stop: brief 30ms freeze for impact feel
+  player.hitStopTimer = 0.03;
+
+  const cx = e.x + e.width / 2;
+  const cy = e.y + e.height / 2;
+
+  // Death burst particles
+  spawnDeathBurst(cx, cy, e.color);
+
+  // XP floating text (blue)
+  if (floatingTexts) {
+    floatingTexts.push(createFloatingText(cx, cy - 20, '+' + e.xp + 'xp', '#88ccff'));
+  }
+
   const goldAmount = Math.round(
     (e.goldMin + Math.random() * (e.goldMax - e.goldMin)) * player.goldDropMult
   );
-  goldDrops.push(createGoldDrop(e.x + e.width / 2, e.y + e.height / 2, goldAmount));
+  goldDrops.push(createGoldDrop(cx, cy, goldAmount));
 }
 
 function doAoE(cx, cy, radius, damage, enemies, player, goldDrops, floatingTexts) {
@@ -256,12 +377,12 @@ function doAoE(cx, cy, radius, damage, enemies, player, goldDrops, floatingTexts
       if (dealt > 0) {
         floatingTexts.push(createFloatingText(e.x, e.y - 10, dealt, '#fa0'));
       }
-      if (!e.alive) handleEnemyDeath(e, player, goldDrops);
+      if (!e.alive) handleEnemyDeath(e, player, goldDrops, floatingTexts);
     }
   }
 }
 
-function doExplosion(cx, cy, radius, damage, player, enemies, barricade, troops, goldDrops, floatingTexts) {
+function doExplosion(cx, cy, radius, damage, player, enemies, walls, troops, goldDrops, floatingTexts) {
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
 
@@ -276,16 +397,23 @@ function doExplosion(cx, cy, radius, damage, player, enemies, barricade, troops,
     if (!e.alive || e.type === 'suicide') continue;
     if (dist(cx, cy, e.x + e.width / 2, e.y + e.height / 2) < radius) {
       damageEnemy(e, damage);
-      if (!e.alive) handleEnemyDeath(e, player, goldDrops);
+      if (!e.alive) handleEnemyDeath(e, player, goldDrops, floatingTexts);
     }
   }
 
-  // Damage barricade
-  if (!barricade.destroyed) {
-    const bcx = barricade.x + barricade.width / 2;
-    const bcy = barricade.y + barricade.height / 2;
-    if (dist(cx, cy, bcx, bcy) < radius + barricade.height / 2) {
-      damageBarricade(barricade, damage);
+  // Damage all 4 walls
+  const sides = ['north', 'south', 'east', 'west'];
+  for (const side of sides) {
+    const wall = walls[side];
+    if (!wall || wall.destroyed) continue;
+    const segments = getWallSegments(wall);
+    for (const seg of segments) {
+      const segCx = seg.x + seg.w / 2;
+      const segCy = seg.y + seg.h / 2;
+      if (dist(cx, cy, segCx, segCy) < radius + Math.max(seg.w, seg.h) / 2) {
+        damageWall(wall, damage);
+        break; // Only damage this wall once per explosion
+      }
     }
   }
 
@@ -312,16 +440,4 @@ export function updateFloatingTexts(texts, dt) {
   }
 }
 
-export function drawFloatingTexts(texts) {
-  const ctx = document.getElementById('game').getContext('2d');
-  for (const t of texts) {
-    const alpha = Math.min(1, t.timer * 2);
-    ctx.globalAlpha = alpha;
-    ctx.font = '10px "Press Start 2P", monospace';
-    ctx.fillStyle = '#000';
-    ctx.fillText(t.text, t.x + 1, t.y + 1);
-    ctx.fillStyle = t.color;
-    ctx.fillText(t.text, t.x, t.y);
-    ctx.globalAlpha = 1;
-  }
-}
+// drawFloatingTexts removed — replaced by drawDamageNumbers in hud.js

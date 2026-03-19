@@ -3,7 +3,7 @@ import { drawRect, drawText, drawTextCentered, getCtx } from '../renderer.js';
 import { pointInRect } from '../utils/collision.js';
 import { getMouse } from '../input.js';
 
-export function drawMainMenu() {
+export function drawMainMenu(highScore) {
   const ctx = getCtx();
 
   // Background
@@ -55,6 +55,9 @@ export function drawMainMenu() {
   drawTextCentered('Controls:', 370, 10, '#888');
   drawTextCentered('WASD - Move    LMB - Attack    RMB - Block', 392, 8, '#666');
   drawTextCentered('F - Repair    G - Regroup    1 - Potion', 410, 8, '#666');
+
+  // High Score
+  drawTextCentered('High Score: ' + highScore, 440, 10, '#ffdd44');
 
   // Credit
   drawTextCentered('Inspired by Ninja Kiwi', GAME_HEIGHT - 30, 8, '#555');
