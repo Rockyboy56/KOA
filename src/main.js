@@ -432,14 +432,21 @@ function updatePlaying(dt, mouseClicked, mouse) {
   for (const t of troops) {
     const attack = updateTroop(t, dt, enemies, regroupPos, walls);
     if (attack) {
-      const { target, damage } = attack;
-      if (target.alive) {
-        const dealt = damageEnemy(target, damage);
-        if (dealt > 0) {
-          floatingTexts.push(createFloatingText(target.x + target.width / 2, target.y - 10, dealt, '#8cf'));
-        }
-        if (!target.alive) {
-          handleEnemyDeath(target, player, goldDrops, floatingTexts);
+      if (attack.spawnProjectile) {
+        const { x, y, angle, damage } = attack.spawnProjectile;
+        const proj = createProjectile(x, y, angle, damage, 400, 'troopArrow');
+        proj.lifeTime = 1.2;
+        projectiles.push(proj);
+      } else {
+        const { target, damage } = attack;
+        if (target.alive) {
+          const dealt = damageEnemy(target, damage);
+          if (dealt > 0) {
+            floatingTexts.push(createFloatingText(target.x + target.width / 2, target.y - 10, dealt, '#8cf'));
+          }
+          if (!target.alive) {
+            handleEnemyDeath(target, player, goldDrops, floatingTexts);
+          }
         }
       }
     }

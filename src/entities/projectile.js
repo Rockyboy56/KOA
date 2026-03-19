@@ -18,8 +18,8 @@ export function createProjectile(x, y, dirOrAngle, damage, speed, type = 'arrow'
 
   return {
     x, y,
-    width: type === 'arrow' || type === 'playerArrow' ? 12 : 10,
-    height: type === 'arrow' || type === 'playerArrow' ? 6 : 10,
+    width: type === 'arrow' || type === 'playerArrow' || type === 'troopArrow' ? 12 : 10,
+    height: type === 'arrow' || type === 'playerArrow' || type === 'troopArrow' ? 6 : 10,
     dx,
     dy,
     speed,
@@ -36,6 +36,10 @@ export function updateProjectiles(projectiles, dt) {
     const p = projectiles[i];
     p.x += p.dx * p.speed * dt;
     p.y += p.dy * p.speed * dt;
+    if (p.lifeTime !== undefined) {
+      p.lifeTime -= dt;
+      if (p.lifeTime <= 0) p.alive = false;
+    }
     if (p.x < -20 || p.x > WORLD_W + 20 || p.y < -20 || p.y > WORLD_H + 20) {
       p.alive = false;
     }
@@ -97,6 +101,52 @@ export function drawProjectile(p) {
       ctx.closePath();
       ctx.fill();
     }
+    ctx.restore();
+
+  } else if (p.type === 'troopArrow') {
+    // 2 fading trail copies offset backward along velocity
+    for (let i = 2; i >= 1; i--) {
+      const trailX = pcx - p.dx * i * 7;
+      const trailY = pcy - p.dy * i * 7;
+      ctx.globalAlpha = (3 - i) * 0.10;
+      ctx.save();
+      ctx.translate(trailX, trailY);
+      ctx.rotate(p.angle);
+      ctx.fillStyle = '#7a4818';
+      ctx.beginPath();
+      ctx.moveTo(-6, -1); ctx.lineTo(5, -0.7); ctx.lineTo(5, 0.7); ctx.lineTo(-6, 1);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    ctx.save();
+    ctx.translate(pcx, pcy);
+    ctx.rotate(p.angle);
+    // Brown shaft
+    const tShaftGrad = ctx.createLinearGradient(-7, 0, 7, 0);
+    tShaftGrad.addColorStop(0, '#6a3010');
+    tShaftGrad.addColorStop(0.5, '#a06828');
+    tShaftGrad.addColorStop(1, '#7a4818');
+    ctx.fillStyle = tShaftGrad;
+    ctx.beginPath();
+    ctx.moveTo(-7, -1); ctx.lineTo(7, -0.8); ctx.lineTo(7, 0.8); ctx.lineTo(-7, 1);
+    ctx.closePath(); ctx.fill();
+    // Grey metallic arrowhead
+    const tHeadGrad = ctx.createLinearGradient(7, 0, 13, 0);
+    tHeadGrad.addColorStop(0, '#888');
+    tHeadGrad.addColorStop(0.5, '#bbb');
+    tHeadGrad.addColorStop(1, '#ddd');
+    ctx.fillStyle = tHeadGrad;
+    ctx.beginPath();
+    ctx.moveTo(7, -3); ctx.lineTo(13, 0); ctx.lineTo(7, 3);
+    ctx.closePath(); ctx.fill();
+    // Feather fletching
+    ctx.fillStyle = '#884030';
+    ctx.beginPath();
+    ctx.moveTo(-7, 0);
+    ctx.bezierCurveTo(-9, -1.5, -10, -3, -8, -3.5);
+    ctx.bezierCurveTo(-7, -2, -7, -1, -6, 0);
+    ctx.closePath(); ctx.fill();
     ctx.restore();
 
   } else if (p.type === 'magic') {

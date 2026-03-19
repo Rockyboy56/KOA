@@ -199,8 +199,6 @@ export function canHireTroop(econ, typeKey, discount = 0) {
   const def = TROOPS[typeKey];
   if (!def) return false;
   if (def.requires && !econ.buildings[def.requires]) return false;
-  const count = econ.troopCounts[typeKey] || 0;
-  if (count >= def.max) return false;
   return canAfford(econ, def.cost, discount);
 }
 

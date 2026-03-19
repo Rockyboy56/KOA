@@ -9,7 +9,7 @@ import { createProjectile } from '../entities/projectile.js';
 import { WORLD_W, WORLD_H, FORT } from '../config.js';
 import { shake, getCtx } from '../renderer.js';
 import { getEquippedWeapon } from './economy.js';
-import { spawnDeathBurst, spawnGoldSparkle, spawnWallImpact, spawnCritRing, spawnBlockSpark } from './particles.js';
+import { spawnDeathBurst, spawnGoldSparkle, spawnWallImpact, spawnCritRing, spawnBlockSpark, spawnArrowImpact } from './particles.js';
 import { playSwordSwing, playHeavyHit, playCrossbowFire, playEnemyDeath, playPlayerDamage, playBarricadeHit, playBarricadeBreak, playCritHit } from './audio.js';
 
 export function processCombat(dt, player, enemies, walls, goldDrops, projectiles, troops, floatingTexts) {
@@ -271,8 +271,8 @@ export function processCombat(dt, player, enemies, walls, goldDrops, projectiles
     const p = projectiles[i];
     if (!p.alive) continue;
 
-    // Determine if this is a player projectile or enemy projectile
-    const isPlayerProj = p.type === 'playerArrow';
+    // Determine if this is a player/troop projectile or enemy projectile
+    const isPlayerProj = p.type === 'playerArrow' || p.type === 'troopArrow';
 
     if (!isPlayerProj) {
       // Enemy projectile -> hits player
@@ -314,6 +314,7 @@ export function processCombat(dt, player, enemies, walls, goldDrops, projectiles
           const dealt = damageEnemy(e, p.damage);
           if (dealt > 0) {
             floatingTexts.push(createFloatingText(e.x + e.width / 2, e.y - 10, dealt, '#fff'));
+            if (p.type === 'troopArrow') spawnArrowImpact(e.x + e.width / 2, e.y + e.height / 2);
           }
           if (!e.alive) handleEnemyDeath(e, player, goldDrops, floatingTexts);
           // Pierce: decrement pierce counter, destroy if exhausted

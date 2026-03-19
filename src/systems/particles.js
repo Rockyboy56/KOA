@@ -299,6 +299,18 @@ export function spawnWallImpact(x, y) {
   }
 }
 
+/**
+ * Small yellow spark burst when an arrow hits an enemy (4 particles).
+ */
+export function spawnArrowImpact(x, y) {
+  for (let i = 0; i < 4; i++) {
+    const angle = (Math.PI * 2 * i) / 4 + (Math.random() - 0.5) * 0.8;
+    const spd = 40 + Math.random() * 60;
+    spawn(x, y, Math.cos(angle) * spd, Math.sin(angle) * spd,
+          0.25, 2 + Math.random() * 2, '#ffe844', 'spark');
+  }
+}
+
 // ---- Reset (for game restart) ----
 
 export function resetParticles() {

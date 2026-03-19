@@ -131,6 +131,13 @@ export function updateTroop(t, dt, enemies, regroupPos, walls) {
   if (t.attackTimer <= 0 && nearest) {
     t.attackTimer = t.attackRate;
     if (nearestDist <= t.range) {
+      if (t.typeKey === 'archer') {
+        const angle = Math.atan2(
+          nearest.y + nearest.height / 2 - tcy,
+          nearest.x + nearest.width / 2 - tcx
+        );
+        return { spawnProjectile: { x: tcx, y: tcy, angle, damage: t.damage } };
+      }
       return { target: nearest, damage: t.damage, aoe: t.aoeRadius };
     }
   }
