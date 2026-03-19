@@ -1012,3 +1012,85 @@ text, a balance pass across waves 1-50, a new Consumables tab in the shop
 with an accessible Minor Heal Potion available from wave 1, and shop tab
 discoverability dots. The game must be fully playable after this sprint.
 ```
+
+---
+
+## Sprint 7: Sprite Polish & Weapon Animations
+
+> Notes captured from playtesting after Sprint 6.
+
+### 7.1 Troop Sprites
+- Allied troops currently render as plain blue circles — need full top-down vector sprites
+- Each of the 5 troop types needs a distinct silhouette matching their role:
+  - Footman: tabard + spear
+  - Archer: hood + bow
+  - Knight: full armor (gold trim, different from player)
+  - Crossbowman: heavy crossbow T-shape
+  - Wizard: blue robes + glowing staff
+- Use same style as drawPlayer.js (gradients, bold outlines, top-down dome head)
+- Update src/rendering/drawTroop.js with full per-type rendering (currently just placeholder shapes)
+
+### 7.2 Archer Projectiles
+- Archer troops currently have no visible projectiles when attacking
+- Add arrow projectile rendering: thin tapered line (wide at back, pointed tip)
+- Arrow rotates to travel direction
+- Brief motion blur trail (3 fading copies offset backward)
+- On hit: small impact spark burst
+- Apply same fix to enemy archers if missing
+
+### 7.3 Remove Hired Unit Cap
+- Currently troops are capped at a maximum (economy.js troopCounts max check)
+- Remove the per-type cap for hired units — player should be able to hire as many as they can afford
+- Keep the config max values for display only (don't grey out the hire button based on count)
+- Note: may need performance check if many troops are hired simultaneously
+
+### 7.4 Per-Weapon Attack Animations
+- Every weapon class needs a visually distinct attack animation:
+  - **Swords**: the current combo system (sweep / lunge / spin) — already done ✓
+  - **Axes**: heavy overhead chop (body leans forward, axe swings down), slower but wider arc, earth-brown/grey trail
+  - **Maces**: short-range slam (no sweep arc), large shockwave ring on impact, blue/white impact flash, heavy screen shake
+  - **Ranged (crossbow)**: no melee arc — instead draw a bolt projectile firing forward, recoil animation (body steps back briefly)
+- Weapon type read from player.weaponClass ('swords'|'axes'|'maces'|'ranged')
+- Update drawPlayer.js and drawEffects.js to switch animation style based on weaponClass
+- Ranged bolt: same style as archer arrow but larger, travels faster
+
+### Files to change in Sprint 7
+```
+MODIFIED:
+  src/rendering/drawTroop.js     — full per-type sprite rendering
+  src/rendering/drawPlayer.js    — weapon-class-based attack animations
+  src/rendering/drawEffects.js   — per-weapon arc/effect styles
+  src/entities/troop.js          — archer projectile spawning
+  src/systems/economy.js         — remove hired unit cap
+POSSIBLY:
+  src/entities/projectile.js     — troop arrow rendering
+```
+
+### Sprint 7 — Suggested Agent Workflow
+```
+STEP 1: /agents technical-artist
+  "Read DEVPLAN.md Sprint 7 and src/rendering/drawTroop.js. The troop
+   sprites are currently placeholder blue circles. Design and implement
+   full top-down vector sprites for all 5 troop types, matching the
+   style of drawPlayer.js. Bold outlines, gradients, distinct silhouettes."
+
+STEP 2: /agents engineering-frontend-developer
+  "Read DEVPLAN.md Sprint 7 sections 7.2, 7.3, and 7.4. Add archer
+   projectile rendering, remove the hired unit cap in economy.js, and
+   implement per-weapon-class attack animations in drawPlayer.js and
+   drawEffects.js (axes: chop, maces: slam, ranged: bolt fire)."
+
+STEP 3: /agents engineering-code-reviewer
+  "Review Sprint 7 changes. Check archer projectiles don't leak memory,
+   troop cap removal doesn't cause performance issues at 20+ troops,
+   and weapon animations don't break when switching weapons mid-combo."
+```
+
+### Start Sprint 7
+```
+Read DEVPLAN.md and implement Sprint 7 (sections 7.1 through 7.4).
+Replace placeholder troop sprites with full top-down vector art for all
+5 troop types. Add archer projectile rendering. Remove the hired unit cap
+in economy.js. Implement per-weapon-class attack animations (axes: chop,
+maces: slam+shockwave, ranged: bolt fire + recoil). Build must pass clean.
+```
