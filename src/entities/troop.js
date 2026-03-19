@@ -2,6 +2,7 @@ import { TROOPS, FORT, GATES, WORLD_W, WORLD_H } from '../config.js';
 import { clamp, randRange, dist } from '../utils/math.js';
 import { drawRect, drawBar, drawCircle, getCtx } from '../renderer.js';
 import { getBlockingRects, resolveAxis } from '../utils/wallCollision.js';
+import { drawTroop as _drawTroopNew } from '../rendering/drawTroop.js';
 
 let troopId = 0;
 
@@ -147,6 +148,10 @@ export function damageTroop(t, amount) {
 }
 
 export function drawTroop(t) {
+  _drawTroopNew(t);
+}
+
+function _drawTroopLegacy(t) {
   if (!t.alive) return;
 
   const ctx = getCtx();

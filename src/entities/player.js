@@ -5,6 +5,7 @@ import { drawRect, drawBar, drawText, drawCircle, shake, getCtx } from '../rende
 import { getWallSegments, getNearestWall } from '../entities/barricade.js';
 import { getEquippedWeapon } from '../systems/economy.js';
 import { getBlockingRects, resolveAxis } from '../utils/wallCollision.js';
+import { drawPlayer as _drawPlayerNew } from '../rendering/drawPlayer.js';
 
 /** Create a new player entity with default stats, equipment, and position. */
 export function createPlayer() {
@@ -745,6 +746,10 @@ function _drawWeaponParticles(ctx, vis, t, tipX, tipY) {
 }
 
 export function drawPlayer(p) {
+  _drawPlayerNew(p);
+}
+
+function _drawPlayerLegacy(p) {
   const ctx = getCtx();
   ctx.save();
 

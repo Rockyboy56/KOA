@@ -4,6 +4,7 @@ import { drawRect, drawBar, drawText, drawCircle, getCtx } from '../renderer.js'
 import { getHPScale, getDamageScale } from '../config.js';
 import { getWallSegments } from '../entities/barricade.js';
 import { getBlockingRects, resolveAxis } from '../utils/wallCollision.js';
+import { drawEnemy as _drawEnemyNew } from '../rendering/drawEnemy.js';
 
 let nextId = 0;
 
@@ -374,6 +375,10 @@ export function knockbackEnemy(e, amount) {
 }
 
 export function drawEnemy(e) {
+  _drawEnemyNew(e);
+}
+
+function _drawEnemyLegacy(e) {
   const ctx = getCtx();
   ctx.save();
 
