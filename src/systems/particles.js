@@ -230,6 +230,13 @@ export function spawnBossFlash() {
 }
 
 /**
+ * Weapon impact flash: brief white overlay (mace slam etc).
+ */
+export function spawnWeaponFlash(alpha) {
+  screenFlashAlpha = alpha;
+}
+
+/**
  * Update the screen flash fade (call every frame).
  */
 export function updateScreenFlash(dt) {

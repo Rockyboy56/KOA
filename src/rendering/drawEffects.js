@@ -110,3 +110,168 @@ export function drawSlashArc(ctx, attack) {
 
   ctx.restore();
 }
+
+/**
+ * Axe chop: tight 90° downward arc, earth-brown/dark-grey trail + impact dust.
+ * ctx is already translated to attacker center.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {object} attack - { progress: 0-1, facing: radians, r: number }
+ */
+export function axeChop(ctx, attack) {
+  const { progress, facing, r } = attack;
+  if (progress <= 0) return;
+
+  ctx.save();
+
+  const arcSpan = Math.PI * 0.5; // 90° tight arc
+  const arcStart = facing + Math.PI * 0.8; // arm raised behind
+  const arcEnd = arcStart - arcSpan * progress;
+  const sweepR = r + 34;
+  const alpha = Math.sin(progress * Math.PI) * 0.9;
+
+  // Arc fill: earth-brown
+  ctx.beginPath(); ctx.moveTo(0, 0);
+  ctx.arc(0, 0, sweepR, arcEnd, arcStart);
+  ctx.closePath();
+  const arcG = ctx.createRadialGradient(0, 0, 10, 0, 0, sweepR);
+  arcG.addColorStop(0, `rgba(110,75,30,${alpha * 0.5})`);
+  arcG.addColorStop(0.5, `rgba(80,55,20,${alpha * 0.6})`);
+  arcG.addColorStop(1, `rgba(55,40,15,0)`);
+  ctx.fillStyle = arcG; ctx.fill();
+
+  // Heavy leading edge (dark grey/brown)
+  ctx.strokeStyle = `rgba(70,55,35,${alpha})`; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.arc(0, 0, sweepR, arcEnd - 0.04, arcEnd); ctx.stroke();
+
+  // Chunky trailing line
+  ctx.strokeStyle = `rgba(120,90,45,${alpha * 0.7})`; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(0, 0, sweepR - 7, arcEnd - 0.15, arcEnd + 0.05); ctx.stroke();
+
+  // Impact dust burst at end of arc (progress > 0.8)
+  if (progress > 0.8) {
+    const ep = (progress - 0.8) / 0.2;
+    const tipX = Math.cos(arcEnd) * sweepR;
+    const tipY = Math.sin(arcEnd) * sweepR;
+    for (let i = 0; i < 6; i++) {
+      const dustA = arcEnd + (i / 6 - 0.5) * Math.PI * 0.9;
+      const dustD = (10 + i * 5) * ep;
+      const dustX = tipX + Math.cos(dustA) * dustD;
+      const dustY = tipY + Math.sin(dustA) * dustD;
+      const dustR = Math.max(0.5, (4 + i * 1.5) * (1 - ep * 0.4));
+      const dustAlpha = (1 - ep) * 0.75;
+      const bv = 130 - i * 8;
+      ctx.fillStyle = `rgba(${bv},${Math.floor(bv * 0.65)},${Math.floor(bv * 0.28)},${dustAlpha})`;
+      ctx.beginPath(); ctx.arc(dustX, dustY, dustR, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Mace slam: straight forward punch, expanding shockwave rings, stun stars.
+ * ctx is already translated to attacker center.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {object} attack - { progress: 0-1, facing: radians, r: number }
+ */
+export function maceSlam(ctx, attack) {
+  const { progress, facing, r } = attack;
+  if (progress <= 0) return;
+
+  ctx.save();
+
+  const cosF = Math.cos(facing);
+  const sinF = Math.sin(facing);
+  const reachDist = r + 22 + progress * 18;
+  const tipX = cosF * reachDist;
+  const tipY = sinF * reachDist;
+  const alpha = Math.sin(progress * Math.PI) * 0.85;
+
+  // Impact glow at mace tip
+  const impG = ctx.createRadialGradient(tipX, tipY, 0, tipX, tipY, 16);
+  impG.addColorStop(0, `rgba(230,230,255,${alpha * 0.8})`);
+  impG.addColorStop(0.5, `rgba(180,190,255,${alpha * 0.4})`);
+  impG.addColorStop(1, `rgba(150,160,255,0)`);
+  ctx.fillStyle = impG;
+  ctx.beginPath(); ctx.arc(tipX, tipY, 16, 0, Math.PI * 2); ctx.fill();
+
+  // Shockwave ring: white → transparent, grows 0→60px
+  const ringR = progress * 60;
+  ctx.strokeStyle = `rgba(255,255,255,${(1 - progress) * 0.85})`;
+  ctx.lineWidth = 5 * (1 - progress * 0.8) + 1;
+  ctx.beginPath(); ctx.arc(tipX, tipY, ringR, 0, Math.PI * 2); ctx.stroke();
+
+  // Secondary blue ring (delayed)
+  if (progress > 0.15) {
+    const bp = (progress - 0.15) / 0.85;
+    ctx.strokeStyle = `rgba(100,140,255,${(1 - bp) * 0.5})`;
+    ctx.lineWidth = 3 * (1 - bp) + 1;
+    ctx.beginPath(); ctx.arc(tipX, tipY, bp * 55, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // Stun stars: 3 spinning outward
+  if (progress > 0.3) {
+    const sp = (progress - 0.3) / 0.7;
+    for (let i = 0; i < 3; i++) {
+      const sa = (i / 3) * Math.PI * 2 + sp * Math.PI * 1.5;
+      const sx = tipX + Math.cos(sa) * (12 + sp * 28);
+      const sy = tipY + Math.sin(sa) * (12 + sp * 28);
+      const starA = (1 - sp) * 0.9;
+      const ss = 4.5 * (1 - sp * 0.5);
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(sa + sp * Math.PI * 2);
+      ctx.fillStyle = `rgba(255,235,50,${starA})`;
+      ctx.beginPath();
+      ctx.moveTo(0, -ss); ctx.lineTo(ss * 0.3, -ss * 0.3);
+      ctx.lineTo(ss, 0); ctx.lineTo(ss * 0.3, ss * 0.3);
+      ctx.lineTo(0, ss); ctx.lineTo(-ss * 0.3, ss * 0.3);
+      ctx.lineTo(-ss, 0); ctx.lineTo(-ss * 0.3, -ss * 0.3);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Ranged fire: muzzle flash at barrel tip (lasts first ~35% of active phase).
+ * ctx is already translated to attacker center.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {object} attack - { progress: 0-1, facing: radians, r: number }
+ */
+export function rangedFire(ctx, attack) {
+  const { progress, facing, r } = attack;
+  if (progress <= 0 || progress > 0.38) return;
+
+  ctx.save();
+
+  const flashFrac = 1 - progress / 0.38;
+  const cosF = Math.cos(facing);
+  const sinF = Math.sin(facing);
+  const barrelX = cosF * (r + 36);
+  const barrelY = sinF * (r + 36);
+
+  // Muzzle flash radial burst
+  const flashG = ctx.createRadialGradient(barrelX, barrelY, 0, barrelX, barrelY, 14);
+  flashG.addColorStop(0, `rgba(255,255,210,${flashFrac * 0.95})`);
+  flashG.addColorStop(0.35, `rgba(255,170,50,${flashFrac * 0.7})`);
+  flashG.addColorStop(1, `rgba(255,80,0,0)`);
+  ctx.fillStyle = flashG;
+  ctx.beginPath(); ctx.arc(barrelX, barrelY, 14, 0, Math.PI * 2); ctx.fill();
+
+  // Small burst rays
+  for (let i = 0; i < 5; i++) {
+    const ra = facing + (i / 5 - 0.5) * 0.7;
+    const rd = 6 + flashFrac * 10;
+    ctx.strokeStyle = `rgba(255,200,80,${flashFrac * 0.8})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(barrelX + cosF * 4, barrelY + sinF * 4);
+    ctx.lineTo(barrelX + Math.cos(ra) * rd, barrelY + Math.sin(ra) * rd);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}

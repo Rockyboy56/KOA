@@ -36,7 +36,9 @@ export function processCombat(dt, player, enemies, walls, goldDrops, projectiles
           const dealt = damageEnemy(e, dmg);
           player.hitEnemiesThisSwing.add(e.id);
           hitCount++;
-          shake(2, 50);
+          if (player.weaponClass === 'maces') shake(6, 400);
+          else if (player.weaponClass === 'axes') shake(4, 250);
+          else shake(2, 50);
 
           // Knockback
           knockbackEnemy(e, 25 * knockbackMult);
@@ -96,11 +98,11 @@ export function processCombat(dt, player, enemies, walls, goldDrops, projectiles
         pcy + Math.sin(player.facing) * 20,
         player.facing,
         weapon.damage * player.meleeDmgMult * player.buildingDmgMult,
-        350,
-        'playerArrow'
+        600,
+        'playerBolt'
       );
-      // Pierce: projectile passes through multiple enemies
-      proj.pierceLeft = weapon.special === 'pierce3' ? 3 : weapon.special === 'pierce2' ? 2 : 1;
+      // Pierce: bolts pierce up to 2 enemies by default (3 with pierce3 special)
+      proj.pierceLeft = weapon.special === 'pierce3' ? 3 : 2;
       projectiles.push(proj);
     }
   }
@@ -272,7 +274,7 @@ export function processCombat(dt, player, enemies, walls, goldDrops, projectiles
     if (!p.alive) continue;
 
     // Determine if this is a player/troop projectile or enemy projectile
-    const isPlayerProj = p.type === 'playerArrow' || p.type === 'troopArrow';
+    const isPlayerProj = p.type === 'playerArrow' || p.type === 'troopArrow' || p.type === 'playerBolt';
 
     if (!isPlayerProj) {
       // Enemy projectile -> hits player

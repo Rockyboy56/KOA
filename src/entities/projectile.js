@@ -18,8 +18,8 @@ export function createProjectile(x, y, dirOrAngle, damage, speed, type = 'arrow'
 
   return {
     x, y,
-    width: type === 'arrow' || type === 'playerArrow' || type === 'troopArrow' ? 12 : 10,
-    height: type === 'arrow' || type === 'playerArrow' || type === 'troopArrow' ? 6 : 10,
+    width: type === 'playerBolt' ? 16 : (type === 'arrow' || type === 'playerArrow' || type === 'troopArrow' ? 12 : 10),
+    height: type === 'playerBolt' ? 4 : (type === 'arrow' || type === 'playerArrow' || type === 'troopArrow' ? 6 : 10),
     dx,
     dy,
     speed,
@@ -239,6 +239,43 @@ export function drawProjectile(p) {
       ctx.closePath();
       ctx.fill();
     }
+    ctx.restore();
+  } else if (p.type === 'playerBolt') {
+    // Motion blur: 3 fading copies behind
+    for (let i = 3; i >= 1; i--) {
+      const trailX = pcx - p.dx * i * 8;
+      const trailY = pcy - p.dy * i * 8;
+      ctx.globalAlpha = (4 - i) * 0.08;
+      ctx.save();
+      ctx.translate(trailX, trailY);
+      ctx.rotate(p.angle);
+      ctx.fillStyle = '#888';
+      ctx.fillRect(-8, -2, 16, 4);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.save();
+    ctx.translate(pcx, pcy);
+    ctx.rotate(p.angle);
+
+    // Bolt body: thick grey rectangle 16px long, 4px wide
+    const boltGrad = ctx.createLinearGradient(-8, 0, 8, 0);
+    boltGrad.addColorStop(0, '#999');
+    boltGrad.addColorStop(0.6, '#bbb');
+    boltGrad.addColorStop(1, '#777');
+    ctx.fillStyle = boltGrad;
+    ctx.fillRect(-8, -2, 14, 4);
+
+    // Darker tip
+    ctx.fillStyle = '#404040';
+    ctx.fillRect(6, -2, 4, 4);
+
+    // Top highlight
+    ctx.strokeStyle = 'rgba(200,200,200,0.4)';
+    ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(-7, -1); ctx.lineTo(5, -0.7); ctx.stroke();
+
     ctx.restore();
   }
 

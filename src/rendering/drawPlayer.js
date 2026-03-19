@@ -2,6 +2,9 @@ import { PLAYER, ATTACK } from '../config.js';
 import { getCtx } from '../renderer.js';
 import { drawBar, drawText } from '../renderer.js';
 import { getEquippedWeapon } from '../systems/economy.js';
+import { axeChop, maceSlam, rangedFire } from './drawEffects.js';
+import { shake } from '../renderer.js';
+import { spawnWeaponFlash } from '../systems/particles.js';
 
 /**
  * Draw the player as a top-down knight sprite.
@@ -33,6 +36,12 @@ export function drawPlayer(p) {
     activeProgress = Math.max(0, Math.min(1, 1 - p.attackTimer / ATTACK.active));
   }
 
+  // Wind-up phase progress (0→1)
+  let windUpProgress = 0;
+  if (p.attacking && phase === 'windUp') {
+    windUpProgress = Math.max(0, Math.min(1, 1 - p.attackTimer / ATTACK.windUp));
+  }
+
   // Combo 2: body translates forward during active phase
   let lungeDist = 0;
   if (p.attacking && combo === 2) {
@@ -41,8 +50,19 @@ export function drawPlayer(p) {
     }
   }
 
-  const drawCx = cx + Math.cos(facing) * lungeDist;
-  const drawCy = cy + Math.sin(facing) * lungeDist;
+  // Ranged recoil: body steps backward 8px during active phase
+  let recoilDist = 0;
+  if (p.weaponClass === 'ranged' && p.attacking && phase === 'active') {
+    recoilDist = Math.sin(activeProgress * Math.PI) * 8;
+  }
+
+  const drawCx = cx + Math.cos(facing) * (lungeDist - recoilDist);
+  const drawCy = cy + Math.sin(facing) * (lungeDist - recoilDist);
+
+  if (!p.attacking) {
+    p._axeShakeFired = false;
+    p._maceShakeFired = false;
+  }
 
   // ── Drop shadow ──
   ctx.save();
@@ -57,7 +77,7 @@ export function drawPlayer(p) {
 
   // ── Attack effects (drawn under the body) ──
   if (p.attacking && phase === 'active') {
-    _drawAttackEffect(ctx, drawCx, drawCy, facing, combo, activeProgress, r);
+    _drawAttackEffect(ctx, drawCx, drawCy, facing, combo, activeProgress, r, p);
   }
 
   // ── Equip flash ring ──
@@ -80,7 +100,12 @@ export function drawPlayer(p) {
   ctx.save();
   ctx.translate(drawCx, drawCy);
   ctx.rotate(facing + bodyRotExtra);
-  _drawKnightBody(ctx, p, weapon, t, isFlash);
+  // Mace crouch: scale y to 0.9 during wind-up
+  if (p.weaponClass === 'maces' && phase === 'windUp') {
+    const crouchScale = 1 - windUpProgress * 0.1;
+    ctx.scale(1, crouchScale);
+  }
+  _drawKnightBody(ctx, p, weapon, t, isFlash, windUpProgress, activeProgress);
   ctx.restore();
 
   // ── Combo counter ──
@@ -97,11 +122,33 @@ export function drawPlayer(p) {
 
 // ─── Attack visual effects ─────────────────────────────────────────────────
 
-function _drawAttackEffect(ctx, cx, cy, facing, combo, progress, r) {
+function _drawAttackEffect(ctx, cx, cy, facing, combo, progress, r, p) {
   ctx.save();
   ctx.translate(cx, cy);
 
-  if (combo === 1) {
+  const weaponClass = p ? p.weaponClass : 'swords';
+
+  if (weaponClass === 'axes') {
+    axeChop(ctx, { progress, facing, r });
+    if (p && progress >= 0.82 && !p._axeShakeFired) {
+      p._axeShakeFired = true;
+      shake(4, 250);
+    }
+
+  } else if (weaponClass === 'maces') {
+    maceSlam(ctx, { progress, facing, r });
+    if (p && progress >= 0.45 && !p._maceShakeFired) {
+      p._maceShakeFired = true;
+      shake(6, 400);
+      spawnWeaponFlash(0.2);
+    }
+
+  } else if (weaponClass === 'ranged') {
+    rangedFire(ctx, { progress, facing, r });
+
+  } else {
+    // swords: existing combo logic
+    if (combo === 1) {
     // ── Combo 1: Wide horizontal blue arc sweep ──
     const arcSpan = Math.PI * (5 / 4);
     const startAngle = facing + Math.PI * 0.55; // wind-up position
@@ -213,12 +260,14 @@ function _drawAttackEffect(ctx, cx, cy, facing, combo, progress, r) {
     }
   }
 
+  } // end else (swords)
+
   ctx.restore();
 }
 
 // ─── Knight body (top-down, facing +X in local space after ctx.rotate(facing)) ──
 
-function _drawKnightBody(ctx, p, weapon, t, isFlash) {
+function _drawKnightBody(ctx, p, weapon, t, isFlash, windUpProgress = 0, activeProgress = 0) {
   const r = PLAYER.radius;
 
   // Cape: teardrop trailing behind (-X = backward)
@@ -321,32 +370,120 @@ function _drawKnightBody(ctx, p, weapon, t, isFlash) {
     }
   }
 
-  // Sword arm (right side = +Y direction)
+  // Weapon arm + weapon: varies by weapon class
   ctx.fillStyle = isFlash ? '#fff' : '#8090a8';
   ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.ellipse(2, 17, 4, 3, -0.25, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 
-  // Sword blade (extends forward from arm, in +X direction)
-  const sGrad = !isFlash ? (() => {
-    const g = ctx.createLinearGradient(8, 16, 44, 20);
-    g.addColorStop(0, '#eef4ff'); g.addColorStop(1, '#6878a0'); return g;
-  })() : '#fff';
-  ctx.fillStyle = sGrad;
-  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(8, 16);
-  ctx.lineTo(44, 19);
-  ctx.lineTo(44, 22);
-  ctx.lineTo(8, 24);
-  ctx.closePath();
-  ctx.fill(); ctx.stroke();
+  const wClass = p.weaponClass || 'swords';
 
-  // Sword crossguard
-  if (!isFlash) {
-    ctx.fillStyle = '#c8a830'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
-    ctx.fillRect(5, 13, 5, 12); ctx.strokeRect(5, 13, 5, 12);
+  if (wClass === 'axes') {
+    // Arm angle: rotates from rest → raised behind during wind-up → sweeps forward during active
+    const restAngle = Math.atan2(17, 2);
+    const windUpEndAngle = Math.PI * 0.85;
+    const activeEndAngle = Math.PI * 0.35;
+    let axeArmAngle;
+    if (windUpProgress > 0) {
+      axeArmAngle = restAngle + windUpProgress * (windUpEndAngle - restAngle);
+    } else if (activeProgress > 0) {
+      axeArmAngle = windUpEndAngle + activeProgress * (activeEndAngle - windUpEndAngle);
+    } else {
+      axeArmAngle = restAngle;
+    }
+    const aDist = 17;
+    const aX = Math.cos(axeArmAngle) * aDist;
+    const aY = Math.sin(axeArmAngle) * aDist;
+
+    ctx.beginPath(); ctx.ellipse(aX * 0.15, aY, 4, 3, axeArmAngle - Math.PI / 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+    ctx.save();
+    ctx.translate(aX, aY);
+    ctx.rotate(axeArmAngle - Math.PI / 2);
+    if (!isFlash) {
+      ctx.strokeStyle = '#6a4010'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(0, 9); ctx.stroke();
+      ctx.fillStyle = '#aab0b8'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-8, -5); ctx.lineTo(5, -9); ctx.lineTo(7, -2);
+      ctx.lineTo(5, 5); ctx.lineTo(-8, 3);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(220,230,240,0.7)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-6, -4); ctx.lineTo(4, -7); ctx.stroke();
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.moveTo(-8, -5); ctx.lineTo(5, -9); ctx.lineTo(7, -2);
+      ctx.lineTo(5, 5); ctx.lineTo(-8, 3);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+
+  } else if (wClass === 'maces') {
+    // Arm pulls slightly back during wind-up
+    const maceArmY = 17 + windUpProgress * 5;
+    ctx.beginPath(); ctx.ellipse(2, maceArmY, 4, 3, -0.25, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+    const headX = 28 + activeProgress * 12;
+    if (!isFlash) {
+      ctx.strokeStyle = '#7a5010'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(8, maceArmY); ctx.lineTo(headX, maceArmY); ctx.stroke();
+      ctx.fillStyle = '#909098'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(headX, maceArmY, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      for (let i = 0; i < 4; i++) {
+        const fa = (i / 4) * Math.PI * 2 + Math.PI / 8;
+        ctx.fillStyle = '#808088';
+        ctx.beginPath();
+        ctx.moveTo(headX + Math.cos(fa) * 5, maceArmY + Math.sin(fa) * 5);
+        ctx.lineTo(headX + Math.cos(fa) * 10, maceArmY + Math.sin(fa) * 10);
+        ctx.lineTo(headX + Math.cos(fa + 0.4) * 7, maceArmY + Math.sin(fa + 0.4) * 7);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.strokeStyle = 'rgba(220,225,235,0.6)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(headX - 2, maceArmY - 2, 4, Math.PI * 1.1, Math.PI * 1.7); ctx.stroke();
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(headX, maceArmY, 7, 0, Math.PI * 2); ctx.fill();
+    }
+
+  } else if (wClass === 'ranged') {
+    // Crossbow: second arm at top too
+    ctx.beginPath(); ctx.ellipse(2, 13, 4, 3, -0.25, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+    if (!isFlash) {
+      ctx.fillStyle = '#7a5020'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, 10); ctx.lineTo(38, 13); ctx.lineTo(38, 15); ctx.lineTo(0, 18);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#5a3810';
+      ctx.beginPath(); ctx.rect(24, 7, 4, 20); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(25, 8); ctx.lineTo(26, 14); ctx.moveTo(27, 8); ctx.lineTo(26, 14);
+      ctx.moveTo(25, 26); ctx.lineTo(26, 20); ctx.moveTo(27, 26); ctx.lineTo(26, 20);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 10, 38, 8);
+    }
+
   } else {
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(5, 13, 5, 12);
+    // Swords: original drawing
+    ctx.beginPath(); ctx.ellipse(2, 17, 4, 3, -0.25, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+    const sGrad = !isFlash ? (() => {
+      const g = ctx.createLinearGradient(8, 16, 44, 20);
+      g.addColorStop(0, '#eef4ff'); g.addColorStop(1, '#6878a0'); return g;
+    })() : '#fff';
+    ctx.fillStyle = sGrad;
+    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(8, 16); ctx.lineTo(44, 19); ctx.lineTo(44, 22); ctx.lineTo(8, 24);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    if (!isFlash) {
+      ctx.fillStyle = '#c8a830'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.5;
+      ctx.fillRect(5, 13, 5, 12); ctx.strokeRect(5, 13, 5, 12);
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(5, 13, 5, 12);
+    }
   }
 }
